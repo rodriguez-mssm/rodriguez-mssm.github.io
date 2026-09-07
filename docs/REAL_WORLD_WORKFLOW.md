@@ -15,7 +15,7 @@ All three samples have the same Sample Source. The user selects it only while re
 
 ## STEMCELL COA registration
 
-Configure the STEMCELL Sample Source with the **STEMCELL COA registration** profile. In **Sample Intake**, select STEMCELL as the provider/origin, upload the original COA, and optionally take a rear-camera photo of the tube/package. The browser extracts embedded PDF text first and uses local OCR only if critical fields are missing.
+Configure the STEMCELL Sample Source with the **STEMCELL COA registration** profile. In **Sample Intake**, select STEMCELL as the provider/origin, upload the original COA, and take or upload the required photo of the tube/package. The browser extracts embedded PDF text first and uses local OCR only if critical fields are missing.
 
 Compare every Extracted/Missing value with the displayed COA, correct fields as needed, and check the review confirmation. Only then does the application create the root sample and authoritative metadata. For the representative synthetic fixture, `1 x 10^8 cells` becomes 100 million cells while the raw string remains attached to source metadata. All later PBMC aliquots, DNA, and RNA retain STEMCELL provenance through `sample_source_id` and parent lineage without duplicating donor metadata.
 

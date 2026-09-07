@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 const migrationUrl = new URL("../supabase/migrations/202609070002_source_registration_profiles.sql", import.meta.url);
+const requiredPhotoMigrationUrl = new URL("../supabase/migrations/202609070003_require_stemcell_intake_photo.sql", import.meta.url);
 
 test("profile registration cannot create a sample before explicit confirmation", async () => {
   const sql = await readFile(migrationUrl, "utf8");
@@ -55,4 +56,17 @@ test("profile-specific source cannot bypass reviewed workflow through generic re
   const generic = sql.match(/function public\.register_source_sample\([^]*?end \$\$;/i)?.[0] || "";
   assert.match(generic, /profile <> 'GENERIC'/i);
   assert.match(generic, /profile-specific reviewed registration workflow/i);
+});
+
+test("STEMCELL intake requires a photo in both the UI and database", async () => {
+  const [sql, ui] = await Promise.all([
+    readFile(requiredPhotoMigrationUrl, "utf8"),
+    readFile(new URL("../inventory/js/stemcell-registration-ui.js", import.meta.url), "utf8"),
+  ]);
+  assert.match(ui, /id="stemcell-photo"[^>]+required/);
+  assert.match(ui, /if \(!photo\)/);
+  assert.match(sql, /registration_profile = 'STEMCELL_COA'/i);
+  assert.match(sql, /media_kind = 'IMAGE'/i);
+  assert.match(sql, /before update of status on public\.source_registration_sessions/i);
+  assert.match(sql, /revoke execute on function public\.require_stemcell_intake_photo\(\) from public, anon, authenticated/i);
 });

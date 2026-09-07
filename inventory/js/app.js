@@ -112,7 +112,7 @@ async function renderRegister() {
     const source = sampleSources.find((item) => item.id === select.value);
     if (!source) { container.replaceChildren(); return; }
     if (source.registration_profile === "STEMCELL_COA") {
-      const { mountStemcellRegistration } = await import("./stemcell-registration-ui.js");
+      const { mountStemcellRegistration } = await import("./stemcell-registration-ui.js?v=202609070005");
       await mountStemcellRegistration({ container, source, api, typeOptions, escapeHtml, toast });
     } else renderGenericRegistration(container, source);
   };

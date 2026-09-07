@@ -42,8 +42,9 @@ Run `supabase init` once because this repository currently contains migrations b
   3. `202609060001_enforce_browser_least_privilege.sql`
   4. `202609070001_sample_sources.sql`
   5. `202609070002_source_registration_profiles.sql`
+  6. `202609070003_require_stemcell_intake_photo.sql`
 - [ ] Apply all pending migrations with `supabase db push`.
-- [ ] Confirm all five versions appear as local and remote in `supabase migration list`.
+- [ ] Confirm all six versions appear as local and remote in `supabase migration list`.
 
 If the CLI cannot be used, open **SQL Editor → New query**, run the complete first migration, then the complete second migration. Record this operational exception: SQL Editor execution does not populate CLI migration history. Do not later use `db push` until migration history has been reconciled.
 
@@ -152,7 +153,7 @@ The application has no signup form and no browser administration panel. Disablin
 
 The repository’s verified Pages configuration is **legacy branch deployment**, `main`, `/(root)`, public, with HTTPS enforced.
 
-- [ ] Commit the reviewed files, including all five migrations and `inventory/config.js` containing only the public URL/key.
+- [ ] Commit the reviewed files, including all six migrations and `inventory/config.js` containing only the public URL/key.
 - [ ] Push the commit to `origin/main`.
 - [ ] On GitHub open **rodriguez-mssm/rodriguez-mssm.github.io → Settings → Pages**.
 - [ ] Under **Build and deployment**, confirm **Deploy from a branch**, branch **main**, folder **/(root)**. Do not change it to `/docs`; that would omit `inventory/` and alter the current site.

@@ -9,7 +9,7 @@ function field(label, name, initial, options = {}) {
 
 export async function mountStemcellRegistration({ container, source, api, typeOptions, escapeHtml, toast }) {
   let registrationSession = null; let coaMedia = null; let photoMedia = null; let parsed = null;
-  container.innerHTML = `<section class="panel"><h2>STEMCELL COA registration</h2><p>Upload the original COA, optionally add a sample/package photo, then review every extracted value before registration.</p><div class="row"><label>Certificate of Analysis PDF<input id="stemcell-coa" type="file" accept="application/pdf,.pdf" required></label><label>Sample photo (optional)<input id="stemcell-photo" type="file" accept="image/jpeg,image/png,image/heic,image/heif" capture="environment"></label></div><button id="parse-stemcell-coa" type="button">Upload and parse COA</button><p id="stemcell-parse-status" role="status"></p></section><div id="stemcell-review"></div>`;
+  container.innerHTML = `<section class="panel"><h2>STEMCELL COA registration</h2><p>Upload the original COA and a required sample/package photo, then review every extracted value before intake.</p><div class="row"><label>Certificate of Analysis PDF<input id="stemcell-coa" type="file" accept="application/pdf,.pdf" required></label><label>Sample photo<input id="stemcell-photo" type="file" accept="image/jpeg,image/png,image/heic,image/heif" capture="environment" required></label></div><button id="parse-stemcell-coa" type="button">Upload and parse COA</button><p id="stemcell-parse-status" role="status"></p></section><div id="stemcell-review"></div>`;
   const coaInput = container.querySelector("#stemcell-coa");
   const photoInput = container.querySelector("#stemcell-photo");
   const status = container.querySelector("#stemcell-parse-status");
@@ -18,6 +18,7 @@ export async function mountStemcellRegistration({ container, source, api, typeOp
   button.onclick = async () => {
     const coa = coaInput.files[0]; const photo = photoInput.files[0];
     if (!coa) { status.innerHTML = '<span class="error">Select a STEMCELL COA PDF.</span>'; return; }
+    if (!photo) { status.innerHTML = '<span class="error">Take or select a sample photo.</span>'; return; }
     if (coa.type !== "application/pdf" || coa.size > 15728640) { status.innerHTML = '<span class="error">COA must be a PDF no larger than 15 MB.</span>'; return; }
     if (photo && (!['image/jpeg','image/png','image/heic','image/heif'].includes(photo.type) || photo.size > 15728640)) { status.innerHTML = '<span class="error">Photo must be JPEG, PNG, HEIC, or HEIF and no larger than 15 MB.</span>'; return; }
     button.disabled = true;
@@ -27,7 +28,7 @@ export async function mountStemcellRegistration({ container, source, api, typeOp
         status.textContent = "Uploading COA privately…";
         coaMedia = await api.uploadRegistrationMedia(registrationSession.id, coa, "DOCUMENT", "COA");
       }
-      if (photo && !photoMedia) {
+      if (!photoMedia) {
         status.textContent = "Uploading photo privately…";
         photoMedia = await api.uploadRegistrationMedia(registrationSession.id, photo, "IMAGE");
       }

@@ -42,7 +42,7 @@ After applying migrations:
 
 Static source tests in `tests/security.test.js` guard against accidentally omitting RLS or granting anon policies, but they do not replace live integration verification.
 
-The detailed operation-by-operation review and RPC-hardening findings are documented in `docs/RLS_REVIEW.md`. Apply all five migrations in timestamp order. `202609070002_source_registration_profiles.sql` adds protected draft registration, metadata, media, and private Storage after the Sample Sources migration.
+The detailed operation-by-operation review and RPC-hardening findings are documented in `docs/RLS_REVIEW.md`. Apply all six migrations in timestamp order. `202609070002_source_registration_profiles.sql` adds protected draft registration, metadata, media, and private Storage after the Sample Sources migration; `202609070003_require_stemcell_intake_photo.sql` makes the photo mandatory at the database boundary for STEMCELL intake.
 
 ## Browser and supply-chain limitations
 

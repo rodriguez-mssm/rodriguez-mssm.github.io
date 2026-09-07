@@ -1,6 +1,6 @@
 # RLS and RPC Security Review
 
-Review scope: all five migrations, browser data calls, table/Storage grants, RLS policies, trigger behavior, and every `SECURITY DEFINER` function. The browser UI is not treated as a security boundary.
+Review scope: all six migrations, browser data calls, table/Storage grants, RLS policies, trigger behavior, and every `SECURITY DEFINER` function. The browser UI is not treated as a security boundary.
 
 ## Access summary
 
@@ -86,6 +86,8 @@ A live catalog review then found that Supabase's project default privileges had 
 Migration `202609070001_sample_sources.sql` creates the RLS-protected provider/origin table, grants authenticated users SELECT only behind the approved-user policy, and exposes only audited create/update RPCs. New root samples require a valid source. A non-definer insert trigger copies the parent's source to descendants and rejects conflicting source IDs. No delete privilege or RPC exists, and the foreign key uses `ON DELETE RESTRICT`.
 
 Migration `202609070002_source_registration_profiles.sql` adds approval-gated draft sessions, donor identity, root-only metadata, private media references, and the private Storage bucket. Storage object SELECT requires approval; INSERT additionally requires the first object-path component to equal `auth.uid()`. No anonymous/public, update, or delete Storage policy is created.
+
+Migration `202609070003_require_stemcell_intake_photo.sql` adds a non-browser-executable trigger that rejects the completion transition and rejects a STEMCELL registration session unless a linked image exists. This makes the photo requirement independent of frontend validation.
 
 ## Residual limitations
 

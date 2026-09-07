@@ -1,6 +1,6 @@
 # Synthetic V1 Acceptance Test
 
-Run in a new Supabase project after all five migrations and frontend configuration. Use only synthetic external references and record the database-generated IDs on a temporary test worksheet.
+Run in a new Supabase project after all six migrations and frontend configuration. Use only synthetic external references and record the database-generated IDs on a temporary test worksheet.
 
 The V1 always generates immutable IDs such as `PBMC-000001`; it does not accept a caller-selected `sample_id`. Wherever this plan names `TEST-PBMC-001` or `TEST-SERUM-001`, enter that value in **External/lab reference**, then use the generated Sample ID for scanning/searching. This tests the requested synthetic records without bypassing the implemented ID strategy.
 
@@ -20,10 +20,10 @@ Sample Source means the external/provider origin. Parent Sample means the immedi
 ## Test 0A: STEMCELL reviewed registration and private media
 
 1. Select STEMCELL under **Sample Intake**. Confirm the COA/photo workflow appears instead of the generic form.
-2. Select a synthetic PDF from `tests/fixtures/stemcell_coa/` and optionally capture a synthetic package photo. Confirm no sample row exists before review confirmation.
+2. Select a synthetic PDF from `tests/fixtures/stemcell_coa/` and capture a synthetic package photo. Both are required. Confirm no sample row exists before review confirmation.
 3. Confirm embedded text is attempted first and OCR is reported only when needed. Review Extracted/Missing badges and change one harmless field; expect **User-edited**.
 4. Confirm PBMC/BMMNC/serum product mapping and normalized cell/volume quantity match the adjacent `expected.json` entry. For ambiguous descriptions, ensure Sample Type remains unselected.
-5. Submit without the review checkbox, including by direct RPC. Expect rejection and no sample.
+5. Submit without a photo, then without the review checkbox, including by direct RPC. Expect rejection and no sample in both cases.
 6. Check the review confirmation and register. Verify `SOURCE_REGISTERED` and `SOURCE_METADATA_RECORDED`, a linked `source_sample_metadata` row, and linked COA/photo `sample_media` rows.
 7. Search by donor ID, lot number, and catalog number. Confirm the root and descendants are found while concise results do not display all demographics.
 8. Open the root detail. Confirm the COA uses a short-lived signed URL and the optional image appears. No public Storage URL should work.

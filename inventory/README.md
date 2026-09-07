@@ -15,7 +15,7 @@ Camera access on a non-localhost development address generally requires HTTPS. T
 ## Supabase setup
 
 1. Create a Supabase project in the desired compliant organizational account and record its Project URL and publishable key (or legacy anon key).
-2. Apply migrations with the Supabase CLI: `supabase link --project-ref PROJECT_REF`, then `supabase db push`. Alternatively, run every migration in filename order in the SQL editor. Existing deployments should apply `202609070002_source_registration_profiles.sql` after the Sample Sources migration.
+2. Apply migrations with the Supabase CLI: `supabase link --project-ref PROJECT_REF`, then `supabase db push`. Alternatively, run every migration in filename order in the SQL editor. Existing deployments should apply `202609070002_source_registration_profiles.sql` and then `202609070003_require_stemcell_intake_photo.sql` after the Sample Sources migration.
 3. In Authentication settings, enable Email provider. Disable public sign-ups unless the lab explicitly wants self-registration; this app intentionally has no sign-up form.
 4. Set the Site URL to `https://rodriguez-mssm.github.io/inventory/` and add local/deployed redirect URLs as needed.
 5. Put the Project URL and publishable/anon key in `inventory/config.js` and deploy. Do not commit a service-role key.
@@ -56,7 +56,7 @@ Approved users manage origins from the **Sample Sources** home card. A source ha
 
 Rows created before the Sample Sources migration remain nullable so existing synthetic tests are not given a fabricated origin. Assign those synthetic roots deliberately if they will continue to be used; newly registered roots cannot be created without a source.
 
-Each source also has an explicit registration profile. Existing sources default to Generic. Edit the STEMCELL source and select **STEMCELL COA registration** to enable private COA/photo upload, local PDF parsing/OCR fallback, reviewed metadata, and confirmed registration. See [source-specific registration](../docs/SOURCE_REGISTRATION.md).
+Each source also has an explicit registration profile. Existing sources default to Generic. Edit the STEMCELL source and select **STEMCELL COA registration** to enable private COA upload, required sample-photo upload, local PDF parsing/OCR fallback, reviewed metadata, and confirmed intake. See [source-specific registration](../docs/SOURCE_REGISTRATION.md).
 
 The source-registration migration creates the private Supabase Storage bucket and its policies reproducibly. No Dashboard bucket setup or public URL is required.
 

@@ -5,14 +5,14 @@
 Each Sample Source has an explicit registration profile. The profile is configuration, not an inference from its name:
 
 - `GENERIC`: the existing manual sample type, external reference, quantity, concentration, and notes form.
-- `STEMCELL_COA`: private COA upload, optional photo, deterministic parsing, mandatory review, and confirmed registration.
+- `STEMCELL_COA`: private COA upload, required sample photo, deterministic parsing, mandatory review, and confirmed registration.
 
 After applying the migration, existing Sample Sources remain `GENERIC`. Open **Sample Sources → Edit** and deliberately select **STEMCELL COA registration** for the STEMCELL source.
 
 ## STEMCELL workflow
 
 1. Choose a Sample Source configured as `STEMCELL_COA`.
-2. Select a COA PDF and optionally take/upload a photo. Mobile file capture requests the rear/environment camera where supported.
+2. Select a COA PDF and take/upload the required sample photo. Mobile file capture requests the rear/environment camera where supported.
 3. The browser creates a draft registration session and uploads the original files to the private `sample-media` bucket using UUID-only object paths.
 4. PDF.js extracts embedded text locally. If critical fields are absent or unreadable, Tesseract.js performs local OCR in the browser. The file is not sent to an external document/AI service.
 5. A deterministic STEMCELL parser identifies labeled fields and normalizes scientific-notation cell counts or volumes.
