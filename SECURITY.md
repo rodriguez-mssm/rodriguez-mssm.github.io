@@ -6,7 +6,9 @@ The GitHub Pages code and its Supabase URL/publishable (or legacy anon) key are 
 
 The Supabase service-role key bypasses RLS. Never put it in `inventory/config.js`, browser storage, GitHub Actions intended for Pages output, commits, screenshots, or support messages. Use it only in a trusted administrative environment.
 
-All inventory tables enable RLS. There are no anonymous policies or anonymous table privileges. Authenticated reads require an approved, non-disabled profile. Mutations use narrowly granted database functions which repeat that approval check and implement locked transactions. Application users cannot directly insert/update/delete audit history.
+All inventory tables, including `sample_sources`, enable RLS. There are no anonymous policies or anonymous table privileges. Authenticated reads require an approved, non-disabled profile. Mutations use narrowly granted database functions which repeat that approval check and implement locked transactions. Application users cannot directly insert/update/delete audit history.
+
+Sample Source metadata is protected research inventory metadata. Approved users may select it and may call only `create_sample_source` and `update_sample_source` for changes. Both are fixed-`search_path` `SECURITY DEFINER` functions, assert approval, and append audit events. There is no browser delete function or direct INSERT/UPDATE/DELETE grant; referenced sources are additionally protected by `ON DELETE RESTRICT`.
 
 ## Data rules
 
@@ -30,10 +32,11 @@ After applying migrations:
 4. Approve the profile, sign in again, and confirm reads/RPCs succeed.
 5. Disable the profile and confirm a refreshed session can no longer read inventory or execute RPCs.
 6. Confirm direct authenticated INSERT/UPDATE/DELETE against `audit_events` is denied.
+7. Repeat anonymous and unapproved reads against `/rest/v1/sample_sources?select=*`; expect no rows. Confirm approved reads and the two approved-user RPCs work.
 
 Static source tests in `tests/security.test.js` guard against accidentally omitting RLS or granting anon policies, but they do not replace live integration verification.
 
-The detailed operation-by-operation review and RPC-hardening findings are documented in `docs/RLS_REVIEW.md`. Apply all three migrations in timestamp order; the second hardens validation and the third enforces the exact browser privilege surface.
+The detailed operation-by-operation review and RPC-hardening findings are documented in `docs/RLS_REVIEW.md`. Apply all four migrations in timestamp order. `202609070001_sample_sources.sql` adds the protected Sample Source model after the three deployed V1 migrations.
 
 ## Browser and supply-chain limitations
 

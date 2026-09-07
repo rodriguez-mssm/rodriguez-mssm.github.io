@@ -1,5 +1,18 @@
 # Real-world Bench Workflows
 
+## Sample Source versus parent sample
+
+Before registering a new physical root, create or select its external/provider origin under **Sample Sources**. For example, `STEMCELL` may represent STEMCELL Technologies. `sample_source_id` remains STEMCELL throughout processing. `parent_sample_id` separately records the immediate physical tube:
+
+```text
+Sample Source: STEMCELL
+PBMC-000001 (parent: none)
+  -> DNA-000001 (parent: PBMC-000001)
+     -> DNA-000002 (parent: DNA-000001)
+```
+
+All three samples have the same Sample Source. The user selects it only while registering PBMC-000001; downstream creation inherits it automatically.
+
 ## Scenario 1: PBMC aliquots plus DNA and RNA
 
 Register `PBMC-000001` with 100 million cells. In one Process Sample plan add:

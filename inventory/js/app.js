@@ -5,6 +5,8 @@ import { aliquotSourceAllocation, plannedVialCount, sourceAllocation, validateAl
 import { generateLabelPdf } from "./labels.js";
 import { emptyInventoryHtml, scannerUnavailableHtml } from "./ui-state.js";
 import { buildProcessingPlanPayload } from "./processing-payload.js";
+import { filterSampleSources, validateSampleSource } from "./sample-sources.js";
+import { buildSourceSamplePayload } from "./registration-payload.js";
 
 const app = document.querySelector("#app");
 const header = document.querySelector(".app-header");
@@ -76,18 +78,24 @@ function renderNotApproved(error) {
 async function route() {
   stopScanner(); nav.classList.remove("open");
   const path = location.hash.replace(/^#\/?/, "").split("?")[0] || "home";
-  const routes = { home: renderHome, process: renderProcess, pending: renderPending, confirm: renderConfirm, search: renderSearch, register: renderRegister };
+  const routes = { home: renderHome, process: renderProcess, pending: renderPending, confirm: renderConfirm, search: renderSearch, register: renderRegister, sources: renderSampleSources };
   try { await (routes[path] || renderHome)(); }
   catch (error) { app.innerHTML = `${page("Something went wrong")}<p class="error">${errorMessage(error)}</p><button onclick="location.reload()">Try again</button>`; }
 }
 
 function renderHome() {
-  app.innerHTML = `${page(`Welcome${profile?.display_name ? `, ${escapeHtml(profile.display_name)}` : ""}`, "Choose a bench workflow.")}<section class="card-grid"><a class="card" href="#/process"><h2>Process sample</h2><p>Plan aliquots or extractions and reserve labels.</p></a><a class="card" href="#/pending"><h2>Pending processing</h2><p>Record DNA or RNA extraction results.</p></a><a class="card" href="#/confirm"><h2>Confirm samples</h2><p>Scan labels and activate physical tubes.</p></a><a class="card" href="#/search"><h2>Search inventory</h2><p>Find samples, measurements, history, and lineage.</p></a><a class="card" href="#/register"><h2>Register source</h2><p>Add a pre-existing source tube to begin processing.</p></a></section>`;
+  app.innerHTML = `${page(`Welcome${profile?.display_name ? `, ${escapeHtml(profile.display_name)}` : ""}`, "Choose a bench workflow.")}<section class="card-grid"><a class="card" href="#/process"><h2>Process sample</h2><p>Plan aliquots or extractions and reserve labels.</p></a><a class="card" href="#/pending"><h2>Pending processing</h2><p>Record DNA or RNA extraction results.</p></a><a class="card" href="#/confirm"><h2>Confirm samples</h2><p>Scan labels and activate physical tubes.</p></a><a class="card" href="#/search"><h2>Search inventory</h2><p>Find samples, measurements, history, and lineage.</p></a><a class="card" href="#/register"><h2>Register source</h2><p>Add a pre-existing source tube to begin processing.</p></a><a class="card" href="#/sources"><h2>Sample Sources</h2><p>Add or manage collaborators, vendors, and other origins of samples.</p></a></section>`;
 }
 
-function renderRegister() {
-  app.innerHTML = `${page("Register source sample", "Use laboratory identifiers only. Do not enter PHI.")}<form id="register-form" class="panel"><div class="row"><label>Sample type<select name="sampleType">${typeOptions()}</select></label><label>External/lab reference (optional)<input name="externalId" maxlength="80"></label></div><div id="register-quantity"></div><label>Notes<textarea name="notes" rows="2"></textarea></label><button>Register active source</button></form><div id="register-result"></div>`;
+async function renderRegister() {
+  const sampleSources = await api.sampleSources();
+  app.innerHTML = `${page("Register source sample", "Use laboratory identifiers only. Do not enter PHI.")}<form id="register-form" class="panel"><label>Find Sample Source<input id="sample-source-filter" type="search" placeholder="Search nickname or full name" autocomplete="off"></label><label>Sample Source<select name="sampleSourceId" required>${sampleSourceOptions(sampleSources)}</select></label><div id="sample-source-empty">${sampleSources.length ? "" : '<p class="warning">Create a Sample Source before registering a physical source sample. <a href="#/sources">Manage Sample Sources</a></p>'}</div><div class="row"><label>Sample type<select name="sampleType">${typeOptions()}</select></label><label>External/lab reference (optional)<input name="externalId" maxlength="80"></label></div><div id="register-quantity"></div><label>Notes<textarea name="notes" rows="2"></textarea></label><button ${sampleSources.length ? "" : "disabled"}>Register active source</button></form><div id="register-result"></div>`;
   const form = document.querySelector("#register-form");
+  const filter = document.querySelector("#sample-source-filter");
+  filter.oninput = () => {
+    const selected = form.sampleSourceId.value;
+    form.sampleSourceId.innerHTML = sampleSourceOptions(filterSampleSources(sampleSources, filter.value), selected);
+  };
   const showFields = () => {
     const dim = typeConfig(form.sampleType.value).dimension;
     document.querySelector("#register-quantity").innerHTML = dim === "CELLS" ? `<label>Cell count (million)<input name="cellCount" type="number" min="0" step="any" required></label>` : `<div class="row"><label>Volume (µL)<input name="volume" type="number" min="0" step="any" required></label>${dim === "NUCLEIC_ACID" ? `<label>Concentration (ng/µL)<input name="concentration" type="number" min="0" step="any"></label>` : ""}</div>`;
@@ -96,10 +104,56 @@ function renderRegister() {
   form.onsubmit = async (event) => {
     event.preventDefault();
     try {
-      const result = await api.registerSource({ sample_type: form.sampleType.value, external_id: form.externalId.value || null, cell_count_million: number(form.cellCount?.value), volume_ul: number(form.volume?.value), concentration_ng_ul: number(form.concentration?.value), notes: form.notes.value || null });
+      const payload = buildSourceSamplePayload({ sampleSourceId: form.sampleSourceId.value, sampleType: form.sampleType.value, externalId: form.externalId.value, cellCount: number(form.cellCount?.value), volume: number(form.volume?.value), concentration: number(form.concentration?.value), notes: form.notes.value });
+      const result = await api.registerSource(payload);
       document.querySelector("#register-result").innerHTML = `<p class="success">Registered <strong>${escapeHtml(result.sample_id)}</strong>.</p>`; form.reset(); showFields();
     } catch (error) { document.querySelector("#register-result").innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
   };
+}
+
+function sampleSourceOptions(sources, selected = "") {
+  return `<option value="">Select a Sample Source</option>${sources.map((source) => `<option value="${source.id}" ${source.id === selected ? "selected" : ""}>${escapeHtml(source.nickname)} — ${escapeHtml(source.name)}</option>`).join("")}`;
+}
+
+async function renderSampleSources() {
+  const sources = await api.sampleSources();
+  app.innerHTML = `${page("Sample Sources", "External providers and origins are separate from immediate physical parent samples.")}<section class="panel"><div class="row"><label>Search Sample Sources<input id="source-manager-search" type="search" placeholder="Nickname or full name" autocomplete="off"></label><button id="add-sample-source" type="button">Add Sample Source</button></div></section><div id="sample-source-list"></div><dialog id="sample-source-dialog"><form id="sample-source-form"><h2 id="sample-source-form-title">Add Sample Source</h2><input name="id" type="hidden"><label>Name<input name="name" maxlength="200" required></label><label>Nickname<input name="nickname" maxlength="80" required></label><label>URL (optional)<input name="url" type="url" maxlength="2048" placeholder="https://example.org/"></label><div class="row"><button type="submit">Save</button><button id="cancel-sample-source" type="button" class="secondary">Cancel</button></div><p id="sample-source-form-result" role="status"></p></form></dialog>`;
+  const search = document.querySelector("#source-manager-search");
+  const list = document.querySelector("#sample-source-list");
+  const dialog = document.querySelector("#sample-source-dialog");
+  const form = document.querySelector("#sample-source-form");
+  const draw = () => {
+    const filtered = filterSampleSources(sources, search.value);
+    list.innerHTML = filtered.length ? `<div class="list">${filtered.map((source) => `<article class="list-item"><div><h3>${escapeHtml(source.nickname)}</h3><p>${escapeHtml(source.name)}</p>${source.url ? `<p><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.url)}</a></p>` : ""}</div><button type="button" class="secondary edit-sample-source" data-id="${source.id}">Edit</button></article>`).join("")}</div>` : `<p class="muted">No Sample Sources found.</p>`;
+    list.querySelectorAll(".edit-sample-source").forEach((button) => button.onclick = () => openSourceForm(sources.find((source) => source.id === button.dataset.id)));
+  };
+  const openSourceForm = (source = null) => {
+    form.reset();
+    form.elements.namedItem("id").value = source?.id || "";
+    form.name.value = source?.name || "";
+    form.nickname.value = source?.nickname || "";
+    form.url.value = source?.url || "";
+    document.querySelector("#sample-source-form-title").textContent = source ? "Edit Sample Source" : "Add Sample Source";
+    document.querySelector("#sample-source-form-result").textContent = "";
+    dialog.showModal();
+  };
+  search.oninput = draw;
+  document.querySelector("#add-sample-source").onclick = () => openSourceForm();
+  document.querySelector("#cancel-sample-source").onclick = () => dialog.close();
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    const result = document.querySelector("#sample-source-form-result");
+    try {
+      const values = validateSampleSource({ name: form.name.value, nickname: form.nickname.value, url: form.url.value });
+      const sourceId = form.elements.namedItem("id").value;
+      const saved = sourceId ? await api.updateSampleSource(sourceId, values) : await api.createSampleSource(values);
+      const index = sources.findIndex((source) => source.id === saved.id);
+      if (index >= 0) sources[index] = saved; else sources.push(saved);
+      sources.sort((a, b) => a.nickname.localeCompare(b.nickname));
+      dialog.close(); draw(); toast(`Sample Source ${saved.nickname} saved`);
+    } catch (error) { result.innerHTML = `<span class="error">${errorMessage(error)}</span>`; }
+  };
+  draw();
 }
 
 function renderProcess() {
@@ -109,7 +163,7 @@ function renderProcess() {
     const area = document.querySelector("#source-results"); area.innerHTML = `<p>Searching…</p>`;
     try {
       const rows = await api.findSamples(term.trim(), true);
-      area.innerHTML = rows.length ? rows.map((sample) => `<button class="secondary choose-source" data-id="${sample.sample_id}">${escapeHtml(sample.sample_id)} · ${escapeHtml(sample.sample_type)} · ${formatQuantity(sample)}</button>`).join(" ") : `<p class="warning">No active sample found.</p>`;
+      area.innerHTML = rows.length ? rows.map((sample) => `<button class="secondary choose-source" data-id="${sample.sample_id}">${escapeHtml(sample.sample_id)} · ${escapeHtml(sample.sample_type)} · ${formatQuantity(sample)} · ${escapeHtml(sample.sample_source?.nickname || "Legacy: source not assigned")}</button>`).join(" ") : `<p class="warning">No active sample found.</p>`;
       area.querySelectorAll(".choose-source").forEach((button) => button.onclick = () => { stopScanner(); document.querySelector("#source-scanner").replaceChildren(); buildPlan(rows.find((row) => row.sample_id === button.dataset.id)); });
     } catch (error) { area.innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
   };
@@ -124,7 +178,7 @@ function renderProcess() {
 
 function buildPlan(source) {
   const available = availableQuantity(source); const unit = typeConfig(source.sample_type).unit;
-  document.querySelector("#plan-area").innerHTML = `<section class="panel"><h2>${escapeHtml(source.sample_id)}</h2><p>${escapeHtml(source.sample_type)} · Available: <strong>${available.toLocaleString()} ${unit}</strong></p><div id="outputs"></div><div class="row"><button id="add-output" class="secondary">+ Add output</button></div><div id="allocation"></div><label>Processing notes<textarea id="plan-notes" rows="2"></textarea></label><button id="create-plan" disabled>Create plan and reserve labels</button><div id="plan-result"></div></section>`;
+  document.querySelector("#plan-area").innerHTML = `<section class="panel"><h2>${escapeHtml(source.sample_id)}</h2><p>${escapeHtml(source.sample_type)} · Available: <strong>${available.toLocaleString()} ${unit}</strong> · Sample Source: <strong>${escapeHtml(source.sample_source?.nickname || "Not assigned")}</strong></p><div id="outputs"></div><div class="row"><button id="add-output" class="secondary">+ Add output</button></div><div id="allocation"></div><label>Processing notes<textarea id="plan-notes" rows="2"></textarea></label><button id="create-plan" disabled>Create plan and reserve labels</button><div id="plan-result"></div></section>`;
   document.querySelector("#add-output").onclick = () => { outputs.push({ type: source.sample_type, mode: "ALIQUOT" }); drawOutputs(source); };
   document.querySelector("#create-plan").onclick = () => submitPlan(source);
   outputs.push({ type: source.sample_type, mode: "ALIQUOT" }); drawOutputs(source);
@@ -229,19 +283,19 @@ async function lookupForConfirmation(sampleId) {
   const holder = document.querySelector("#scan-result");
   try {
     const sample = await api.getSample(sampleId);
-    holder.innerHTML = `<article class="card"><h2>${escapeHtml(sample.sample_id)} ${statusBadge(sample.status)}</h2><p>${escapeHtml(sample.sample_type)} · ${sample.parent?.sample_id ? `Parent ${escapeHtml(sample.parent.sample_id)}` : "Registered source"}</p><p>${sample.planned_volume_ul != null ? `${sample.planned_volume_ul} µL planned` : sample.planned_cell_count_million != null ? `${sample.planned_cell_count_million}M cells planned` : "Quantity recorded at result entry"}</p>${sample.status === "PLANNED" ? `<button id="activate-sample">Confirm physical tube and activate</button> <button id="not-created" class="secondary">Mark not created</button>` : `<p class="warning">This sample cannot be activated from status ${escapeHtml(sample.status)}.</p>`}</article>`;
+    holder.innerHTML = `<article class="card"><h2>${escapeHtml(sample.sample_id)} ${statusBadge(sample.status)}</h2><p>${escapeHtml(sample.sample_type)} · ${sample.parent?.sample_id ? `Parent ${escapeHtml(sample.parent.sample_id)}` : "Registered source"}</p><p>Sample Source: ${escapeHtml(sample.sample_source?.nickname || "Not assigned")}</p><p>${sample.planned_volume_ul != null ? `${sample.planned_volume_ul} µL planned` : sample.planned_cell_count_million != null ? `${sample.planned_cell_count_million}M cells planned` : "Quantity recorded at result entry"}</p>${sample.status === "PLANNED" ? `<button id="activate-sample">Confirm physical tube and activate</button> <button id="not-created" class="secondary">Mark not created</button>` : `<p class="warning">This sample cannot be activated from status ${escapeHtml(sample.status)}.</p>`}</article>`;
     document.querySelector("#activate-sample")?.addEventListener("click", async () => { try { await api.activate(sample.sample_id); toast(`${sample.sample_id} activated`); holder.innerHTML = `<p class="success">${escapeHtml(sample.sample_id)} is ACTIVE. Ready for next scan.</p>`; } catch (error) { holder.innerHTML += `<p class="error">${errorMessage(error)}</p>`; } });
     document.querySelector("#not-created")?.addEventListener("click", async () => { try { await api.markNotCreated(sample.sample_id); toast(`${sample.sample_id} marked not created`); holder.innerHTML = `<p class="success">${escapeHtml(sample.sample_id)} is NOT_CREATED. Ready for next scan.</p>`; } catch (error) { holder.innerHTML += `<p class="error">${errorMessage(error)}</p>`; } });
   } catch (error) { holder.innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
 }
 
 function renderSearch() {
-  app.innerHTML = `${page("Search inventory", "Results include active and non-active sample records.")}<form id="inventory-search" class="row panel"><label>Sample ID<input name="term" autocomplete="off" required></label><button>Search</button></form><div id="search-results"></div>`;
+  app.innerHTML = `${page("Search inventory", "Results include active and non-active sample records.")}<form id="inventory-search" class="row panel"><label>Sample ID or Sample Source<input name="term" autocomplete="off" required></label><button>Search</button></form><div id="search-results"></div>`;
   document.querySelector("#inventory-search").onsubmit = async (event) => {
     event.preventDefault(); const holder = document.querySelector("#search-results"); holder.innerHTML = `<p>Searching…</p>`;
     try {
       const rows = await api.findSamples(event.target.term.value.trim());
-      holder.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Sample</th><th>Type</th><th>Status</th><th>Parent</th><th>Current quantity</th></tr></thead><tbody>${rows.map((row) => `<tr class="sample-row" data-id="${row.sample_id}"><td><button class="secondary">${escapeHtml(row.sample_id)}</button></td><td>${escapeHtml(row.sample_type)}</td><td>${statusBadge(row.status)}</td><td>${escapeHtml(row.parent?.sample_id || "—")}</td><td>${escapeHtml(formatQuantity(row))}</td></tr>`).join("")}</tbody></table></div><div id="sample-detail"></div>` : emptyInventoryHtml();
+      holder.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Sample</th><th>Type</th><th>Status</th><th>Sample Source</th><th>Parent</th><th>Current quantity</th></tr></thead><tbody>${rows.map((row) => `<tr class="sample-row" data-id="${row.sample_id}"><td><button class="secondary">${escapeHtml(row.sample_id)}</button></td><td>${escapeHtml(row.sample_type)}</td><td>${statusBadge(row.status)}</td><td>${escapeHtml(row.sample_source?.nickname || "Not assigned")}</td><td>${escapeHtml(row.parent?.sample_id || "—")}</td><td>${escapeHtml(formatQuantity(row))}</td></tr>`).join("")}</tbody></table></div><div id="sample-detail"></div>` : emptyInventoryHtml();
       holder.querySelectorAll(".sample-row").forEach((row) => row.querySelector("button").onclick = () => showSampleDetail(rows.find((item) => item.sample_id === row.dataset.id)));
     } catch (error) { holder.innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
   };
@@ -249,7 +303,7 @@ function renderSearch() {
 
 async function showSampleDetail(sample) {
   const [children, audit] = await Promise.all([api.children(sample.id), api.audit(sample.id)]); const detail = document.querySelector("#sample-detail");
-  detail.innerHTML = `<section class="panel"><h2>${escapeHtml(sample.sample_id)} ${statusBadge(sample.status)}</h2><p><strong>${escapeHtml(sample.sample_type)}</strong> · ${escapeHtml(formatQuantity(sample))}</p><p>Parent: ${escapeHtml(sample.parent?.sample_id || "None (registered source)")} · Processing event: ${escapeHtml(sample.processing_event?.event_id || "—")}</p>${sample.concentration_ng_ul != null ? `<p>Concentration: ${sample.concentration_ng_ul} ng/µL · Total mass: ${sample.total_mass_ng} ng</p>` : ""}<h3>Children</h3>${children.length ? `<ul class="tree">${children.map((child) => `<li>${escapeHtml(child.sample_id)} ${statusBadge(child.status)} · ${escapeHtml(child.sample_type)}</li>`).join("")}</ul>` : `<p class="muted">No direct children.</p>`}<h3>Recent history</h3>${audit.length ? `<ul>${audit.map((item) => `<li>${new Date(item.created_at).toLocaleString()} — ${escapeHtml(item.event_type)}</li>`).join("")}</ul>` : `<p class="muted">No events.</p>`}</section>`;
+  detail.innerHTML = `<section class="panel"><h2>${escapeHtml(sample.sample_id)} ${statusBadge(sample.status)}</h2><p><strong>${escapeHtml(sample.sample_type)}</strong> · ${escapeHtml(formatQuantity(sample))}</p><p><strong>Sample Source:</strong> ${escapeHtml(sample.sample_source?.nickname || "Not assigned (legacy synthetic sample)")}${sample.sample_source?.name ? ` — ${escapeHtml(sample.sample_source.name)}` : ""}</p><p>Parent: ${escapeHtml(sample.parent?.sample_id || "None (registered source)")} · Processing event: ${escapeHtml(sample.processing_event?.event_id || "—")}</p>${sample.concentration_ng_ul != null ? `<p>Concentration: ${sample.concentration_ng_ul} ng/µL · Total mass: ${sample.total_mass_ng} ng</p>` : ""}<h3>Children</h3>${children.length ? `<ul class="tree">${children.map((child) => `<li>${escapeHtml(child.sample_id)} ${statusBadge(child.status)} · ${escapeHtml(child.sample_type)} · ${escapeHtml(child.sample_source?.nickname || "Source not assigned")}</li>`).join("")}</ul>` : `<p class="muted">No direct children.</p>`}<h3>Recent history</h3>${audit.length ? `<ul>${audit.map((item) => `<li>${new Date(item.created_at).toLocaleString()} — ${escapeHtml(item.event_type)}</li>`).join("")}</ul>` : `<p class="muted">No events.</p>`}</section>`;
 }
 
 document.querySelector("#menu-button").onclick = () => nav.classList.toggle("open");

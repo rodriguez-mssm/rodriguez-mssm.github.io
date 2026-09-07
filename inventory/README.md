@@ -15,7 +15,7 @@ Camera access on a non-localhost development address generally requires HTTPS. T
 ## Supabase setup
 
 1. Create a Supabase project in the desired compliant organizational account and record its Project URL and publishable key (or legacy anon key).
-2. Apply migrations with the Supabase CLI: `supabase link --project-ref PROJECT_REF`, then `supabase db push`. Alternatively, run the migration file in order in the SQL editor.
+2. Apply migrations with the Supabase CLI: `supabase link --project-ref PROJECT_REF`, then `supabase db push`. Alternatively, run every migration in filename order in the SQL editor. Existing deployments should apply `202609070001_sample_sources.sql` after the three V1 migrations.
 3. In Authentication settings, enable Email provider. Disable public sign-ups unless the lab explicitly wants self-registration; this app intentionally has no sign-up form.
 4. Set the Site URL to `https://rodriguez-mssm.github.io/inventory/` and add local/deployed redirect URLs as needed.
 5. Put the Project URL and publishable/anon key in `inventory/config.js` and deploy. Do not commit a service-role key.
@@ -44,6 +44,17 @@ An Auth administrator may also ban/delete the Auth login. Historical foreign-key
 ## Database migrations
 
 Migrations are under `supabase/migrations/` and reconstruct tables, enums, constraints, indexes, sequences, RLS, and transactional functions. Do not manually change production schema without adding a matching migration.
+
+## Sample Sources
+
+A Sample Source identifies the external provider or origin of material, such as a collaborator's lab, institution, or vendor. It is not the physical parent sample:
+
+- `sample_source_id` remains constant across a lineage and identifies the external/provider origin.
+- `parent_sample_id` points to the immediate physical tube used to create a sample.
+
+Approved users manage origins from the **Sample Sources** home card. A source has a unique nickname, full name, and optional HTTP(S) URL. A Sample Source must be created before registering a new root sample. Processing automatically inherits the root's `sample_source_id`; users never select it again for aliquots, extraction products, or additional vials.
+
+Rows created before the Sample Sources migration remain nullable so existing synthetic tests are not given a fabricated origin. Assign those synthetic roots deliberately if they will continue to be used; newly registered roots cannot be created without a source.
 
 ## GitHub Pages deployment
 

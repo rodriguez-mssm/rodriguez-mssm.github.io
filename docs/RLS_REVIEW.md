@@ -1,6 +1,6 @@
 # RLS and RPC Security Review
 
-Review scope: all three migrations, browser data calls, table grants, RLS policies, trigger behavior, and every `SECURITY DEFINER` function. The browser UI is not treated as a security boundary.
+Review scope: all four migrations, browser data calls, table grants, RLS policies, trigger behavior, and every `SECURITY DEFINER` function. The browser UI is not treated as a security boundary.
 
 ## Access summary
 
@@ -8,7 +8,7 @@ Review scope: all three migrations, browser data calls, table grants, RLS polici
 |---|---|---|---|
 | Unauthenticated (`anon`) | No inventory/profile rows. Static public HTML/CSS/JS and public configuration remain visible. | No table privileges or policies. | No EXECUTE grants. Calls fail before workflow code can run. |
 | Authenticated, unapproved | May read only their own `profiles` row, including approval status. No inventory or audit rows. | No direct mutation policies; cannot approve themselves. | The six public workflow RPCs are discoverable/callable at the API layer, but each immediately calls `assert_approved()` and fails. Internal functions are not granted. |
-| Approved `user` | May SELECT all V1 inventory, processing, linkage, and audit rows; may read their own profile. | No direct INSERT/UPDATE/DELETE policies. All writes must use controlled RPCs. | May execute the six V1 workflow RPCs. Database locks, constraints, and RPC validation enforce allocation and state rules. |
+| Approved `user` | May SELECT all V1 inventory, Sample Source, processing, linkage, and audit rows; may read their own profile. | No direct INSERT/UPDATE/DELETE policies. All writes must use controlled RPCs. | May execute the six processing RPCs plus the two Sample Source RPCs. Database constraints, locks, triggers, and RPC validation enforce rules. |
 | Approved `admin` | Exactly the same browser/database access as approved `user` in V1. | Exactly the same as approved `user`. | Exactly the same as approved `user`. The role is reserved metadata; user approval/administration is performed by a Supabase project administrator in the Dashboard/SQL environment. |
 
 Supabase project owners/administrators using the Dashboard, SQL Editor, database credentials, or a secret/service-role key are outside browser RLS and can administer the database. Those credentials must never be exposed to the static site.
@@ -26,10 +26,10 @@ Even if project signup is accidentally enabled, a new account is unapproved and 
 
 ## Table operations
 
-All six application tables have RLS enabled. The migration grants authenticated users SELECT only. The policies further reduce access:
+All seven application tables have RLS enabled. The migrations grant authenticated users SELECT only. The policies further reduce access:
 
 - `profiles`: own row only.
-- `samples`, `processing_events`, `processing_outputs`, `processing_output_samples`, `audit_events`: all rows only when `is_approved_lab_user()` is true.
+- `sample_sources`, `samples`, `processing_events`, `processing_outputs`, `processing_output_samples`, `audit_events`: all rows only when `is_approved_lab_user()` is true.
 - No table has an INSERT, UPDATE, or DELETE policy for `anon` or `authenticated`.
 - `anon` has all public-table privileges explicitly revoked.
 - Sequences are not callable by `anon` or `authenticated`.
@@ -39,7 +39,7 @@ Therefore a caller cannot bypass an RPC by issuing a direct REST INSERT/UPDATE/D
 
 ## SECURITY DEFINER review
 
-Every function fixes `search_path` to `public, pg_temp`. Public and anonymous EXECUTE privileges are revoked. Only these six functions are granted to `authenticated`:
+Every `SECURITY DEFINER` function fixes `search_path` to `public, pg_temp`. Public and anonymous EXECUTE privileges are revoked. The controlled functions granted to `authenticated` are:
 
 1. `register_source_sample(jsonb)`
 2. `create_processing_plan(jsonb)`
@@ -47,6 +47,8 @@ Every function fixes `search_path` to `public, pg_temp`. Public and anonymous EX
 4. `activate_sample(text)`
 5. `mark_sample_not_created(text)`
 6. `mark_labels_printed(uuid[])`
+7. `create_sample_source(text,text,text)`
+8. `update_sample_source(uuid,text,text,text)`
 
 Each workflow RPC begins with `assert_approved()`. `is_approved_lab_user()` is also executable by `authenticated` because PostgreSQL must call it while evaluating SELECT policies; it returns only whether the current session is approved. Internal mutation functions—including `next_sample_identifier`, `refresh_processing_event_status`, `add_output_vials_internal`, `assert_approved`, and the no-longer-public `add_output_vials` wrapper—have no browser-role EXECUTE grant.
 
@@ -58,6 +60,7 @@ Function-specific controls:
 - `activate_sample`: locks the sample; accepts only `PLANNED`; requires extraction results before extraction vial activation; consumes aliquot source once; updates quantities and appends one activation event. A repeated call fails before another event or consumption occurs.
 - `mark_sample_not_created`: locks the sample; accepts only `PLANNED`; prevents premature extraction-vial disposition; releases aliquot reservation once and appends history.
 - `mark_labels_printed`: records label-print events only for existing sample UUIDs. It does not activate samples or change quantities.
+- `create_sample_source` / `update_sample_source`: require approval, validate through table constraints, preserve UUID identity, and append `SAMPLE_SOURCE_CREATED` / `SAMPLE_SOURCE_UPDATED`. No delete function is exposed.
 
 The transaction aborts on any exception, so partial plan/result/state changes are not committed.
 
@@ -72,6 +75,8 @@ The initial migration correctly separated authentication from approval and block
 Migration `202609050002_harden_inventory_rpcs.sql` fixes these issues without altering the original migration. It also adds database constraints preventing reserved quantity from exceeding current quantity and caps a single output plan at 1,000 sample records to limit accidental/hostile oversized requests.
 
 A live catalog review then found that Supabase's project default privileges had granted authenticated users direct table privileges and EXECUTE on newly created internal functions. RLS still blocked direct table writes, but `add_output_vials_internal` was an unsafe callable `SECURITY DEFINER` path. Migration `202609060001_enforce_browser_least_privilege.sql` explicitly revokes all browser table/function/sequence privileges and reconstructs only the intended SELECT and RPC surface. This third migration is required.
+
+Migration `202609070001_sample_sources.sql` creates the RLS-protected provider/origin table, grants authenticated users SELECT only behind the approved-user policy, and exposes only audited create/update RPCs. New root samples require a valid source. A non-definer insert trigger copies the parent's source to descendants and rejects conflicting source IDs. No delete privilege or RPC exists, and the foreign key uses `ON DELETE RESTRICT`.
 
 ## Residual limitations
 

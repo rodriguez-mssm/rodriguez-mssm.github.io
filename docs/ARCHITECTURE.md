@@ -12,6 +12,7 @@ The repository root remains the existing README-backed GitHub Pages site. The in
 - `sample-types.js`: centralized material dimensions and canonical units.
 - `calculations.js`: deterministic allocation, mass, capacity, and distribution rules.
 - `api.js`: the only data-access surface used by the UI.
+- `sample-sources.js`: Sample Source input normalization, URL validation, and client-side filtering.
 - `labels.js` / `label-config.js`: dimension-controlled PDF and 2D barcode output.
 - `scanner.js`: rear-camera Data Matrix/QR scanning and duplicate suppression.
 - `app.js`: routing and screen rendering.
@@ -21,7 +22,9 @@ The repository root remains the existing README-backed GitHub Pages site. The in
 
 `profiles` maps Auth identities to lab approval and the minimal `admin`/`user` role.
 
-`samples` represents one immutable planned or physical tube. A UUID is used for relationships; `sample_id` is an immutable unique label. `parent_sample_id` points to the immediate physical source. Canonical quantity columns are explicit rather than a generic amount/unit pair:
+`sample_sources` stores one external/provider origin with a UUID, unique case-insensitive nickname, full name, optional URL, creator, and timestamps. Approved users read it through RLS and create/update it only through audited RPCs. V1 intentionally provides no delete operation.
+
+`samples` represents one immutable planned or physical tube. A UUID is used for relationships; `sample_id` is an immutable unique label. `parent_sample_id` points to the immediate physical source, while `sample_source_id` points to the external/provider origin. Canonical quantity columns are explicit rather than a generic amount/unit pair:
 
 - Cell materials: original/current/reserved/planned count in millions.
 - Serum/plasma: original/current/reserved/planned volume in µL.
@@ -41,11 +44,15 @@ This strongly typed V1 is easier to validate and query than an entity-attribute-
 
 Planning locks the source sample, verifies unreserved availability, and reserves source quantity in the same transaction. A second user cannot overbook it. Human identifiers are allocated by PostgreSQL sequences and protected by unique constraints.
 
+A `BEFORE INSERT` trigger requires a Sample Source for every newly registered root and copies the immediate parent's `sample_source_id` to every descendant. This covers aliquots, extraction products, and additional vials even if a caller bypasses the UI. Existing pre-migration synthetic rows remain nullable and are not assigned a fictitious source.
+
 Aliquot source material is actually consumed tube-by-tube on activation. Marking an unused aliquot label `NOT_CREATED` releases its reservation. Extraction input is consumed when results are recorded, and all affected rows are locked. Additional vial ordinals are assigned while the output row is locked. Activation requires `PLANNED`, so duplicate activation cannot produce a second event.
 
 ## Identity and lineage
 
 Visible IDs are `<TYPE>-NNNNNN` and events are `PE-NNNNNN`. Every physical tube receives a new independent identifier. IDs never encode authoritative lineage and never nest. `samples.parent_sample_id` and `created_by_processing_event_id` answer what created a tube; event/output/audit records answer what happened to its source.
+
+Sample Source and parent lineage are deliberately orthogonal: Sample Source means external/provider origin; parent means the immediate physical tube. Descendants retain the same Sample Source while their parent changes at each processing step.
 
 ## State separation
 
