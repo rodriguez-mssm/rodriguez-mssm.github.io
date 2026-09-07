@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Barcode Rendering Diagnostic</title>
+  <link rel="stylesheet" href="./css/app.css">
+  <style>
+    .diagnostic-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:24px; }
+    .barcode-stage { background:#fff; border:1px solid var(--line); padding:24px; border-radius:12px; }
+    .barcode-stage canvas { display:block; margin:16px 0; image-rendering:pixelated; image-rendering:crisp-edges; }
+    code { overflow-wrap:anywhere; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">Temporary rendering diagnostic</p>
+    <h1>Browser vs PDF barcodes</h1>
+    <p>No Supabase connection or sample record is used. Both codes contain only <code>PBMC-000001</code>.</p>
+    <div class="diagnostic-grid">
+      <section class="barcode-stage"><h2>Browser Data Matrix</h2><div id="browser-datamatrix"></div><p id="datamatrix-details" class="hint"></p></section>
+      <section class="barcode-stage"><h2>Browser QR</h2><div id="browser-qr"></div><p id="qr-details" class="hint"></p></section>
+    </div>
+    <p><button id="generate-pdf" type="button">Generate 28 mm vector PDF comparison</button></p>
+    <p id="diagnostic-status" role="status"></p>
+    <p><a href="./">Return to inventory</a></p>
+  </main>
+  <script type="module" src="./js/barcode-diagnostic.js"></script>
+</body>
+</html>
