@@ -1,4 +1,4 @@
-import { api } from "./api.js?v=202609070002";
+import { api } from "./api.js?v=202609070006";
 import { configured, supabase } from "./supabase.js";
 import { SAMPLE_TYPES, availableQuantity, formatQuantity, typeConfig } from "./sample-types.js";
 import { aliquotSourceAllocation, plannedVialCount, sourceAllocation, validateAllocation, totalMassNg, suggestVialVolumes, additionalVialsRequired, validateDistribution } from "./calculations.js";
@@ -16,6 +16,7 @@ const nav = document.querySelector("#navigation");
 let profile = null;
 let scanner = null;
 let outputs = [];
+let pendingTrackerTimer = null;
 
 const escapeHtml = (value = "") => String(value).replace(/[&<>'"]/g, (char) => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "'":"&#39;", '"':"&quot;" })[char]);
 const number = (value) => value === "" ? null : Number(value);
@@ -28,6 +29,24 @@ function toast(message) {
 }
 function page(title, intro = "") { return `<p class="eyebrow">Laboratory inventory</p><h1>${title}</h1>${intro ? `<p class="muted">${intro}</p>` : ""}`; }
 function stopScanner() { scanner?.stop(); scanner = null; }
+function stopPendingTracker() { if (pendingTrackerTimer) clearInterval(pendingTrackerTimer); pendingTrackerTimer = null; }
+
+function pendingTrackerText(count) {
+  return `${count} sample${count === 1 ? "" : "s"} pending processing`;
+}
+
+function startPendingCountTracker(element) {
+  const refresh = async () => {
+    try {
+      const count = await api.pendingCount();
+      if (element.isConnected) element.textContent = pendingTrackerText(count);
+    } catch {
+      if (element.isConnected) element.textContent = "Pending count unavailable";
+    }
+  };
+  refresh();
+  pendingTrackerTimer = setInterval(refresh, 15000);
+}
 
 async function startScanner(element, onScan) {
   const { SampleScanner } = await import("./scanner.js");
@@ -78,7 +97,7 @@ function renderNotApproved(error) {
 }
 
 async function route() {
-  stopScanner(); nav.classList.remove("open");
+  stopScanner(); stopPendingTracker(); nav.classList.remove("open");
   const path = location.hash.replace(/^#\/?/, "").split("?")[0] || "home";
   const routes = { home: renderHome, process: renderProcess, pending: renderPending, confirm: renderConfirm, search: renderSearch, register: renderRegister, sources: renderSampleSources, labels: renderLabelSetup };
   try { await (routes[path] || renderHome)(); }
@@ -86,7 +105,8 @@ async function route() {
 }
 
 function renderHome() {
-  app.innerHTML = `${page(`Welcome${profile?.display_name ? `, ${escapeHtml(profile.display_name)}` : ""}`, "Choose a bench workflow.")}<section class="card-grid"><a class="card" href="#/sources"><h2>Sample Sources</h2><p>Add or manage collaborators, vendors, and other origins of samples.</p></a><a class="card" href="#/register"><h2>Sample Intake</h2><p>Intake physical samples arriving into the lab.</p></a><a class="card" href="#/process"><h2>Process sample</h2><p>Plan aliquots or extractions and reserve labels.</p></a><a class="card" href="#/pending"><h2>Pending processing</h2><p>Record DNA or RNA extraction results.</p></a><a class="card" href="#/confirm"><h2>Confirm samples</h2><p>Scan labels and activate physical tubes.</p></a><a class="card" href="#/search"><h2>Search inventory</h2><p>Find samples, measurements, history, and lineage.</p></a><a class="card" href="#/labels"><h2>Label calibration</h2><p>Generate the alignment sheet for printer setup and validation.</p></a></section>`;
+  app.innerHTML = `${page(`Welcome${profile?.display_name ? `, ${escapeHtml(profile.display_name)}` : ""}`, "Choose a bench workflow.")}<section class="card-grid"><a class="card" href="#/sources"><h2>Sample Sources</h2><p>Add or manage collaborators, vendors, and other origins of samples.</p></a><a class="card" href="#/register"><h2>Sample Intake</h2><p>Intake physical samples arriving into the lab.</p></a><a class="card" href="#/process"><h2>Process sample</h2><p>Plan aliquots or extractions and reserve labels.</p></a><a class="card" href="#/pending"><h2>Pending processing</h2><p id="home-pending-count" class="pending-tracker">Checking pending samples…</p><p>Record DNA or RNA extraction results.</p></a><a class="card" href="#/confirm"><h2>Confirm samples</h2><p>Scan labels and activate physical tubes.</p></a><a class="card" href="#/search"><h2>Search inventory</h2><p>Find samples, measurements, history, and lineage.</p></a><a class="card" href="#/labels"><h2>Label calibration</h2><p>Generate the alignment sheet for printer setup and validation.</p></a></section>`;
+  startPendingCountTracker(document.querySelector("#home-pending-count"));
 }
 
 function renderLabelSetup() {
@@ -263,13 +283,22 @@ async function submitPlan(source) {
 }
 
 async function renderPending() {
-  app.innerHTML = `${page("Pending processing", "Extraction plans awaiting actual yield measurements.")}<div id="pending-list"><p>Loading…</p></div>`;
-  const rows = await api.pending(); const holder = document.querySelector("#pending-list");
-  holder.innerHTML = rows.length ? `<div class="list">${rows.map((row) => { const source = row.processing_event.samples; return `<article class="list-item"><div><h3>${escapeHtml(row.processing_event.event_id)} · ${escapeHtml(row.output_type)}</h3><p>From ${escapeHtml(source.sample_id)} · Input ${row.planned_source_allocation} ${typeConfig(source.sample_type).unit}</p><p class="muted">Expected ${row.expected_volume_ul} µL · ${row.output_samples.length} planned vials</p></div><button class="enter-results" data-id="${row.id}">Enter results</button></article>`; }).join("")}</div>` : `<p class="success">No extraction results are pending.</p>`;
-  holder.querySelectorAll(".enter-results").forEach((button) => button.onclick = () => renderResults(rows.find((row) => row.id === button.dataset.id)));
+  app.innerHTML = `${page("Pending processing", "Extraction plans awaiting actual yield measurements.")}<p id="pending-screen-count" class="pending-tracker">Checking pending samples…</p><div id="pending-list"><p>Loading…</p></div>`;
+  const refresh = async () => {
+    const rows = await api.pending();
+    const holder = document.querySelector("#pending-list");
+    const tracker = document.querySelector("#pending-screen-count");
+    if (!holder || !tracker) return;
+    tracker.textContent = pendingTrackerText(rows.length);
+    holder.innerHTML = rows.length ? `<div class="list">${rows.map((row) => { const source = row.processing_event.samples; return `<article class="list-item"><div><h3>${escapeHtml(row.processing_event.event_id)} · ${escapeHtml(row.output_type)}</h3><p>From ${escapeHtml(source.sample_id)} · Input ${row.planned_source_allocation} ${typeConfig(source.sample_type).unit}</p><p class="muted">Expected ${row.expected_volume_ul} µL · ${row.output_samples.length} planned vials</p></div><button class="enter-results" data-id="${row.id}">Enter results</button></article>`; }).join("")}</div>` : `<p class="success">No extraction results are pending.</p>`;
+    holder.querySelectorAll(".enter-results").forEach((button) => button.onclick = () => renderResults(rows.find((row) => row.id === button.dataset.id)));
+  };
+  await refresh();
+  pendingTrackerTimer = setInterval(() => refresh().catch(() => {}), 15000);
 }
 
 function renderResults(output) {
+  stopPendingTracker();
   const planned = output.output_samples.length; const max = Number(output.max_vial_volume_ul);
   app.innerHTML = `${page(`Enter ${escapeHtml(output.output_type)} results`, `${escapeHtml(output.processing_event.event_id)} · ${planned} planned vial(s) · ${max} µL maximum each`)}<form id="results-form" class="panel"><div class="row"><label>Actual volume (µL)<input name="volume" type="number" min="0" step="any" required></label><label>Concentration (ng/µL)<input name="concentration" type="number" min="0" step="any" required></label></div><div id="yield-summary"></div><label>Vial distribution (µL, separated by + or commas)<input name="distribution" placeholder="50 + 42" required></label><div id="capacity-warning"></div><label><input name="override" type="checkbox" style="width:auto"> Permit a vial above configured capacity (recorded in audit)</label><button>Record results</button></form><div id="results-result"></div>`;
   const form = document.querySelector("#results-form");

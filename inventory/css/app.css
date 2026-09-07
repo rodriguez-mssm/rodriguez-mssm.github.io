@@ -42,6 +42,7 @@ button:disabled { opacity:.48; cursor:not-allowed; }
 .success { color:#175d37; background:#edfaF2; border:1px solid #acd9bc; border-radius:7px; padding:10px 12px; }
 .badge { display:inline-block; border-radius:999px; padding:3px 8px; background:#e7eeec; font-size:.72rem; font-weight:850; letter-spacing:.04em; }
 .badge.ACTIVE { background:#d8f2df; color:#17602f; }.badge.PLANNED { background:#fff0c9; color:#704b00; }.badge.NOT_CREATED,.badge.CONSUMED,.badge.DISCARDED { background:#ececec; color:#555; }
+.pending-tracker { display:inline-block; margin:4px 0 8px; padding:5px 9px; border-radius:999px; background:#fff0c9; color:#704b00; font-size:.78rem; font-weight:800; }
 .list { display:grid; gap:10px; }.list-item { display:flex; justify-content:space-between; align-items:center; gap:15px; background:white; border:1px solid var(--line); border-radius:9px; padding:15px; }
 .list-item h3 { margin:0 0 4px; }.list-item p { margin:2px 0; }
 table { width:100%; border-collapse:collapse; background:white; } th,td { text-align:left; border-bottom:1px solid var(--line); padding:10px; } th { font-size:.78rem; color:var(--muted); text-transform:uppercase; }

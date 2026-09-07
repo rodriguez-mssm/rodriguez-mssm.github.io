@@ -22,6 +22,12 @@ export const api = {
   children: (id) => unwrap(supabase.from("samples").select("*, sample_source:sample_source_id(id,name,nickname,url)").eq("parent_sample_id", id).order("sample_id")),
   audit: (id) => unwrap(supabase.from("audit_events").select("event_type,created_at,metadata").eq("sample_id", id).order("created_at", { ascending: false }).limit(30)),
   pending: () => unwrap(supabase.from("processing_outputs").select("*, processing_event:processing_event_id(event_id,source_sample_id,samples!processing_events_source_sample_id_fkey(sample_id,sample_type)), output_samples:processing_output_samples(ordinal,sample:samples(*))").eq("result_status", "AWAITING_RESULTS").order("created_at")),
+  pendingCount: async () => {
+    requireConfigured();
+    const { count, error } = await supabase.from("processing_outputs").select("id", { count: "exact", head: true }).eq("result_status", "AWAITING_RESULTS");
+    if (error) throw error;
+    return count ?? 0;
+  },
   createPlan: (payload) => unwrap(supabase.rpc("create_processing_plan", { p_payload: payload })),
   recordResults: (outputId, actualVolumeUl, concentrationNgUl, vialVolumes, allowOverCapacity = false) => unwrap(supabase.rpc("record_extraction_results", { p_output_id: outputId, p_actual_volume_ul: actualVolumeUl, p_concentration_ng_ul: concentrationNgUl, p_vial_volumes: vialVolumes, p_allow_over_capacity: allowOverCapacity })),
   activate: (sampleId) => unwrap(supabase.rpc("activate_sample", { p_sample_id: sampleId })),
