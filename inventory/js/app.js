@@ -2,7 +2,9 @@ import { api } from "./api.js?v=202609070002";
 import { configured, supabase } from "./supabase.js";
 import { SAMPLE_TYPES, availableQuantity, formatQuantity, typeConfig } from "./sample-types.js";
 import { aliquotSourceAllocation, plannedVialCount, sourceAllocation, validateAllocation, totalMassNg, suggestVialVolumes, additionalVialsRequired, validateDistribution } from "./calculations.js";
-import { generateLabelPdf } from "./labels.js";
+import { generateCalibrationPdf, generateLabelPdf } from "./labels.js?v=202609070003";
+import { requestLabelPrintOptions } from "./label-print-ui.js?v=202609070003";
+import { LABEL_CONFIG } from "./label-config.js?v=202609070003";
 import { emptyInventoryHtml, scannerUnavailableHtml } from "./ui-state.js";
 import { buildProcessingPlanPayload } from "./processing-payload.js";
 import { filterSampleSources, validateSampleSource } from "./sample-sources.js";
@@ -78,24 +80,33 @@ function renderNotApproved(error) {
 async function route() {
   stopScanner(); nav.classList.remove("open");
   const path = location.hash.replace(/^#\/?/, "").split("?")[0] || "home";
-  const routes = { home: renderHome, process: renderProcess, pending: renderPending, confirm: renderConfirm, search: renderSearch, register: renderRegister, sources: renderSampleSources };
+  const routes = { home: renderHome, process: renderProcess, pending: renderPending, confirm: renderConfirm, search: renderSearch, register: renderRegister, sources: renderSampleSources, labels: renderLabelSetup };
   try { await (routes[path] || renderHome)(); }
   catch (error) { app.innerHTML = `${page("Something went wrong")}<p class="error">${errorMessage(error)}</p><button onclick="location.reload()">Try again</button>`; }
 }
 
 function renderHome() {
-  app.innerHTML = `${page(`Welcome${profile?.display_name ? `, ${escapeHtml(profile.display_name)}` : ""}`, "Choose a bench workflow.")}<section class="card-grid"><a class="card" href="#/sources"><h2>Sample Sources</h2><p>Add or manage collaborators, vendors, and other origins of samples.</p></a><a class="card" href="#/process"><h2>Process sample</h2><p>Plan aliquots or extractions and reserve labels.</p></a><a class="card" href="#/pending"><h2>Pending processing</h2><p>Record DNA or RNA extraction results.</p></a><a class="card" href="#/confirm"><h2>Confirm samples</h2><p>Scan labels and activate physical tubes.</p></a><a class="card" href="#/search"><h2>Search inventory</h2><p>Find samples, measurements, history, and lineage.</p></a><a class="card" href="#/register"><h2>Register source</h2><p>Add a pre-existing source tube to begin processing.</p></a></section>`;
+  app.innerHTML = `${page(`Welcome${profile?.display_name ? `, ${escapeHtml(profile.display_name)}` : ""}`, "Choose a bench workflow.")}<section class="card-grid"><a class="card" href="#/sources"><h2>Sample Sources</h2><p>Add or manage collaborators, vendors, and other origins of samples.</p></a><a class="card" href="#/process"><h2>Process sample</h2><p>Plan aliquots or extractions and reserve labels.</p></a><a class="card" href="#/pending"><h2>Pending processing</h2><p>Record DNA or RNA extraction results.</p></a><a class="card" href="#/confirm"><h2>Confirm samples</h2><p>Scan labels and activate physical tubes.</p></a><a class="card" href="#/search"><h2>Search inventory</h2><p>Find samples, measurements, history, and lineage.</p></a><a class="card" href="#/register"><h2>Sample Intake</h2><p>Intake physical samples arriving into the lab.</p></a><a class="card" href="#/labels"><h2>Label calibration</h2><p>Generate the alignment sheet for printer setup and validation.</p></a></section>`;
+}
+
+function renderLabelSetup() {
+  app.innerHTML = `${page("Label calibration", "Development and printer-alignment tools for the CryoLabel sheet.")}<section class="panel"><h2>${escapeHtml(LABEL_CONFIG.name)}</h2><p>${LABEL_CONFIG.grid.columns} columns × ${LABEL_CONFIG.grid.rows} rows = ${LABEL_CONFIG.grid.capacity} positions. Labels are ${LABEL_CONFIG.label.widthMm.toFixed(3)} × ${LABEL_CONFIG.label.heightMm.toFixed(3)} mm.</p><p class="warning">Physical calibration is not yet verified. Print on ordinary paper at Actual size / 100% and overlay it on the label sheet before laboratory use.</p><button id="generate-calibration">Generate calibration sheet</button></section>`;
+  document.querySelector("#generate-calibration").onclick = async () => { await generateCalibrationPdf(); toast("Calibration PDF generated"); };
+}
+
+async function printLabels(samples) {
+  const options = await requestLabelPrintOptions(samples.length);
+  if (!options) return false;
+  await generateLabelPdf(samples, options);
+  await api.markLabelsPrinted(samples.map((sample) => sample.id));
+  toast("Label PDF generated");
+  return true;
 }
 
 async function renderRegister() {
   const sampleSources = await api.sampleSources();
-  app.innerHTML = `${page("Register source sample", "Choose the external/provider origin first. The registration workflow adapts to its configured profile.")}<section class="panel"><label>Find Sample Source<input id="sample-source-filter" type="search" placeholder="Search nickname or full name" autocomplete="off"></label><label>Sample Source<select id="registration-source" required>${sampleSourceOptions(sampleSources)}</select></label>${sampleSources.length ? "" : '<p class="warning">Create a Sample Source before registering a physical source sample. <a href="#/sources">Manage Sample Sources</a></p>'}</section><div id="source-registration-workflow"></div>`;
+  app.innerHTML = `${page("Sample Intake", "Record a physical sample arriving into the lab and select its provider or origin.")}<section class="panel"><label>Sample Source<select id="registration-source" required>${sampleSourceOptions(sampleSources)}</select></label>${sampleSources.length ? "" : '<p class="warning">Create a Sample Source before completing sample intake. <a href="#/sources">Manage Sample Sources</a></p>'}</section><div id="source-registration-workflow"></div>`;
   const select = document.querySelector("#registration-source");
-  const filter = document.querySelector("#sample-source-filter");
-  filter.oninput = () => {
-    const selected = select.value;
-    select.innerHTML = sampleSourceOptions(filterSampleSources(sampleSources, filter.value), selected);
-  };
   select.onchange = async () => {
     const container = document.querySelector("#source-registration-workflow");
     const source = sampleSources.find((item) => item.id === select.value);
@@ -108,7 +119,7 @@ async function renderRegister() {
 }
 
 function renderGenericRegistration(container, source) {
-  container.innerHTML = `<form id="register-form" class="panel"><h2>${escapeHtml(source.nickname)} manual registration</h2><p class="muted">Use laboratory identifiers only. Do not enter PHI.</p><div class="row"><label>Sample type<select name="sampleType">${typeOptions()}</select></label><label>External/lab reference (optional)<input name="externalId" maxlength="80"></label></div><div id="register-quantity"></div><label>Notes<textarea name="notes" rows="2"></textarea></label><button>Register active source</button><div id="register-result"></div></form>`;
+  container.innerHTML = `<form id="register-form" class="panel"><h2>${escapeHtml(source.nickname)} sample intake</h2><p class="muted">Use laboratory identifiers only. Do not enter PHI.</p><div class="row"><label>Sample type<select name="sampleType">${typeOptions()}</select></label><label>External/lab reference (optional)<input name="externalId" maxlength="80"></label></div><div id="register-quantity"></div><label>Notes<textarea name="notes" rows="2"></textarea></label><button>Complete sample intake</button><div id="register-result"></div></form>`;
   const form = container.querySelector("#register-form");
   const showFields = () => {
     const dim = typeConfig(form.sampleType.value).dimension;
@@ -247,7 +258,7 @@ async function submitPlan(source) {
     const payload = buildProcessingPlanPayload(source.id, document.querySelector("#plan-notes").value, outputs);
     const result = await api.createPlan(payload); const samples = result.samples || [];
     resultArea.innerHTML = `<p class="success">Created ${escapeHtml(result.event_id)} with ${samples.length} planned samples.</p><button id="print-plan">Generate ${samples.length} labels PDF</button>`;
-    document.querySelector("#print-plan").onclick = async () => { await generateLabelPdf(samples); await api.markLabelsPrinted(samples.map((s) => s.id)); toast("Label PDF generated"); };
+    document.querySelector("#print-plan").onclick = async () => { await printLabels(samples); };
   } catch (error) { resultArea.innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
 }
 
@@ -279,7 +290,7 @@ function renderResults(output) {
       const result = await api.recordResults(output.id, volume, concentration, volumes, form.override.checked);
       const added = result.additional_samples || [];
       document.querySelector("#results-result").innerHTML = `<p class="success">Results recorded. ${result.activated_ready_count} vial(s) are ready for physical confirmation.</p>${added.length ? `<button id="print-extra">Generate ${added.length} additional label(s)</button>` : ""}`;
-      if (added.length) document.querySelector("#print-extra").onclick = async () => { await generateLabelPdf(added); await api.markLabelsPrinted(added.map((s) => s.id)); toast("Additional label PDF generated"); };
+      if (added.length) document.querySelector("#print-extra").onclick = async () => { await printLabels(added); };
     } catch (error) { document.querySelector("#results-result").innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
   };
 }

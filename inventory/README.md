@@ -52,7 +52,7 @@ A Sample Source identifies the external provider or origin of material, such as 
 - `sample_source_id` remains constant across a lineage and identifies the external/provider origin.
 - `parent_sample_id` points to the immediate physical tube used to create a sample.
 
-Approved users manage origins from the **Sample Sources** home card. A source has a unique nickname, full name, and optional HTTP(S) URL. A Sample Source must be created before registering a new root sample. Processing automatically inherits the root's `sample_source_id`; users never select it again for aliquots, extraction products, or additional vials.
+Approved users manage origins from the **Sample Sources** home card. A source has a unique nickname, full name, and optional HTTP(S) URL. A Sample Source must be created before using **Sample Intake** for a newly arrived root sample. Processing automatically inherits the root's `sample_source_id`; users never select it again for aliquots, extraction products, or additional vials.
 
 Rows created before the Sample Sources migration remain nullable so existing synthetic tests are not given a fabricated origin. Assign those synthetic roots deliberately if they will continue to be used; newly registered roots cannot be created without a source.
 
@@ -68,7 +68,9 @@ Pinned browser dependencies are loaded from `esm.sh`. A future regulated/offline
 
 ## Labels
 
-Edit only `js/label-config.js` when the physical label stock is known. It centralizes page size, label dimensions, row/column count, margins, gaps, barcode format, and barcode size. Print the generated PDF with **Actual size / 100%** and all driver scaling disabled. Verify dimensions with a ruler before using production labels.
+`js/label-config.js` reproduces the geometry extracted from the unchanged blank `label-templates/cryolabel/CryoLabel_Template.docx`: US Letter portrait, 5 × 17 positions, 33.020 × 13.000 mm labels, and the template's alternating gap rows/columns. It centralizes page, label, margin, gap, barcode, quiet-zone, inset, and font values.
+
+Before each PDF, choose a start position from 1–85. Overflow is blocked unless **Allow additional pages** is explicitly selected. The **Label calibration** home card produces a full boundary/position sheet. Print it at **Actual size / 100%**, disable all fitting/scaling, and overlay it against the physical sheet. The template is not production-ready until that manual calibration passes; adjust only `js/label-config.js` if measurements require correction.
 
 Data Matrix is the default because it is compact. The generator falls back to QR if Data Matrix generation fails. Codes contain only `sample_id`.
 

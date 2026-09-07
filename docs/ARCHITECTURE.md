@@ -17,7 +17,7 @@ The repository root remains the existing README-backed GitHub Pages site. The in
 - `source-document-parser.js`: lazy PDF.js text extraction and Tesseract OCR fallback.
 - `stemcell-coa-parser.js`: deterministic, testable STEMCELL field parsing and normalization.
 - `stemcell-registration-ui.js`: upload, review, provenance, and confirmation workflow isolated from generic registration.
-- `labels.js` / `label-config.js`: dimension-controlled PDF and 2D barcode output.
+- `label-config.js` / `label-layout.js` / `labels.js`: DOCX-derived physical geometry, partial-sheet/multi-page placement, calibration PDFs, and vector 2D barcode output.
 - `scanner.js`: rear-camera Data Matrix/QR scanning and duplicate suppression.
 - `app.js`: routing and screen rendering.
 - `lifecycle.js`: documented/tested client lifecycle rules. PostgreSQL remains authoritative.

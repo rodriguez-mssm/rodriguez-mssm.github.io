@@ -19,7 +19,7 @@ Sample Source means the external/provider origin. Parent Sample means the immedi
 
 ## Test 0A: STEMCELL reviewed registration and private media
 
-1. Select STEMCELL under **Register source**. Confirm the COA/photo workflow appears instead of the generic form.
+1. Select STEMCELL under **Sample Intake**. Confirm the COA/photo workflow appears instead of the generic form.
 2. Select a synthetic PDF from `tests/fixtures/stemcell_coa/` and optionally capture a synthetic package photo. Confirm no sample row exists before review confirmation.
 3. Confirm embedded text is attempted first and OCR is reported only when needed. Review Extracted/Missing badges and change one harmless field; expect **User-edited**.
 4. Confirm PBMC/BMMNC/serum product mapping and normalized cell/volume quantity match the adjacent `expected.json` entry. For ambiguous descriptions, ensure Sample Type remains unselected.
@@ -32,7 +32,7 @@ Sample Source means the external/provider origin. Parent Sample means the immedi
 ## Test 1: PBMC multi-output
 
 1. Sign in as an approved synthetic test user.
-2. Open **Register source** and select `STEMCELL`. Upload a synthetic PBMC COA fixture, review it, set External/lab reference to `TEST-PBMC-001`, confirm the normalized Cell count is `100`, and complete reviewed registration.
+2. Open **Sample Intake** and select `STEMCELL`. Upload a synthetic PBMC COA fixture, review it, set External/lab reference to `TEST-PBMC-001`, confirm the normalized Cell count is `100`, and complete reviewed intake.
 3. Record the generated `PBMC-NNNNNN` source ID. Search it and verify ACTIVE, original/current 100M, no parent, and `SOURCE_REGISTERED` history.
 4. Open **Process sample**, find that generated source ID, and configure:
    - PBMC / Aliquot: amount 10, count 6 (60M allocation).
@@ -43,6 +43,7 @@ Sample Source means the external/provider origin. Parent Sample means the immedi
 7. Create the plan. Record the generated `PE-NNNNNN`. Verify 10 planned sample records: 6 PBMC, 2 DNA, 2 RNA.
    Verify the root and all 10 planned descendants have the same STEMCELL `sample_source_id`; no processing form asks for Sample Source again.
 8. Generate the label PDF. Verify ten human-readable IDs/codes and no record content beyond the Sample ID in each code.
+   Before generation, set Start position `13`; verify the first label reports row 3, column 3 and labels occupy positions 13–22. Verify an overflowing start position is blocked unless multi-page printing is explicitly selected.
 9. Activate only two of the six planned PBMC aliquots. Search all six IDs: exactly two are ACTIVE; the other four remain PLANNED and are not physical active inventory.
 10. In **Table Editor → audit_events**, filter `processing_event_id` to the event UUID. Verify one `PROCESSING_PLANNED`, ten `LABEL_RESERVED`, ten `LABEL_PRINTED`, and two `SAMPLE_ACTIVATED` events.
 
@@ -77,7 +78,7 @@ Database bypass check: with an approved-user access token, call `create_processi
 
 ## Test 4: serum
 
-1. Open **Register source**. Select a synthetic Sample Source and Serum, enter External/lab reference `TEST-SERUM-001` and Volume `10000` µL. Register and record the generated `SERUM-NNNNNN` ID.
+1. Open **Sample Intake**. Select a synthetic Sample Source and Serum, enter External/lab reference `TEST-SERUM-001` and Volume `10000` µL. Complete intake and record the generated `SERUM-NNNNNN` ID.
 2. Process it into Serum / Aliquot, 500 µL each, count 20. Verify 10,000 µL allocated and zero expected unreserved remainder.
 3. Create the plan and generate 20 labels.
 4. Activate exactly 18 planned samples.

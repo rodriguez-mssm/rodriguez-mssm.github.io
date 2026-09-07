@@ -166,6 +166,10 @@ The repository’s verified Pages configuration is **legacy branch deployment**,
 - [ ] Scan a synthetic generated label using the rear camera. Confirm one scan result, clear feedback, explicit activation confirmation, and readiness for the next scan.
 - [ ] Deny camera permission once and verify manual Sample ID entry remains usable. Restore permission in browser/site settings.
 - [ ] Generate a synthetic multi-label PDF and an additional one-vial PDF. Confirm human ID, type, planned amount where applicable, and a decodable Data Matrix/QR containing only `sample_id`.
+- [ ] Open **Label calibration**, generate the 85-position sheet, and print it on ordinary paper at **Actual size / 100%** with all fit/shrink/printable-area scaling disabled.
+- [ ] Overlay it on the physical CryoLabel sheet and check positions 1, 5, 81, and 85 for cumulative drift. Adjust only `inventory/js/label-config.js` and repeat if necessary.
+- [ ] Verify partial-sheet printing: Start position 80 accepts six labels and rejects seven unless multi-page printing is explicitly enabled.
+- [ ] **PRODUCTION LABEL PRINTING REMAINS BLOCKED until this physical overlay/calibration succeeds.**
 - [ ] Confirm the PDF page is generated with configured physical units and the print dialog offers **Actual size / 100%**.
 
 > **PRODUCTION LABEL PRINTING IS BLOCKED UNTIL THE EXACT LABEL PRODUCT AND DIMENSIONS ARE PROVIDED.** The current template is for development validation only.

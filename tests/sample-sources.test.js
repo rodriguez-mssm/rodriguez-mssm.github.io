@@ -76,6 +76,14 @@ test("processing children inherit source without frontend reselection", async ()
   assert.doesNotMatch(app.match(/function outputEditor[^]*?function updateOutputFromForm/)?.[0] || "", /sampleSource/i);
 });
 
+test("sample intake selects one provider without a separate source-search field", async () => {
+  const app = await readFile(new URL("../inventory/js/app.js", import.meta.url), "utf8");
+  assert.match(app, /<h2>Sample Intake<\/h2>/);
+  assert.match(app, /page\("Sample Intake"/);
+  assert.match(app, /id="registration-source"/);
+  assert.doesNotMatch(app, /Find Sample Source|sample-source-filter/);
+});
+
 test("inventory API joins and filters samples by Sample Source", async () => {
   const api = await readFile(new URL("../inventory/js/api.js", import.meta.url), "utf8");
   assert.match(api, /sample_source:sample_source_id\(id,name,nickname,url\)/);
