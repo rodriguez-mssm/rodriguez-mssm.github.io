@@ -10,6 +10,7 @@
     "node": ">=20"
   },
   "devDependencies": {
+    "pdfjs-dist": "^4.10.38",
     "supabase": "^2.116.0"
   }
 }

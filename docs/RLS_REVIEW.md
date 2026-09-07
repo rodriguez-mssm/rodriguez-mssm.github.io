@@ -1,6 +1,6 @@
 # RLS and RPC Security Review
 
-Review scope: all four migrations, browser data calls, table grants, RLS policies, trigger behavior, and every `SECURITY DEFINER` function. The browser UI is not treated as a security boundary.
+Review scope: all five migrations, browser data calls, table/Storage grants, RLS policies, trigger behavior, and every `SECURITY DEFINER` function. The browser UI is not treated as a security boundary.
 
 ## Access summary
 
@@ -8,7 +8,7 @@ Review scope: all four migrations, browser data calls, table grants, RLS policie
 |---|---|---|---|
 | Unauthenticated (`anon`) | No inventory/profile rows. Static public HTML/CSS/JS and public configuration remain visible. | No table privileges or policies. | No EXECUTE grants. Calls fail before workflow code can run. |
 | Authenticated, unapproved | May read only their own `profiles` row, including approval status. No inventory or audit rows. | No direct mutation policies; cannot approve themselves. | The six public workflow RPCs are discoverable/callable at the API layer, but each immediately calls `assert_approved()` and fails. Internal functions are not granted. |
-| Approved `user` | May SELECT all V1 inventory, Sample Source, processing, linkage, and audit rows; may read their own profile. | No direct INSERT/UPDATE/DELETE policies. All writes must use controlled RPCs. | May execute the six processing RPCs plus the two Sample Source RPCs. Database constraints, locks, triggers, and RPC validation enforce rules. |
+| Approved `user` | May SELECT inventory, Sample Source, source registration/metadata/media, processing, linkage, and audit rows; may read their own profile and private media. | No direct public-table mutations. Storage INSERT is limited to the user's UUID prefix; no browser update/delete. | May execute processing, Sample Source, draft-media, reviewed-completion, and search RPCs. Database constraints, locks, triggers, and RPC validation enforce rules. |
 | Approved `admin` | Exactly the same browser/database access as approved `user` in V1. | Exactly the same as approved `user`. | Exactly the same as approved `user`. The role is reserved metadata; user approval/administration is performed by a Supabase project administrator in the Dashboard/SQL environment. |
 
 Supabase project owners/administrators using the Dashboard, SQL Editor, database credentials, or a secret/service-role key are outside browser RLS and can administer the database. Those credentials must never be exposed to the static site.
@@ -26,10 +26,10 @@ Even if project signup is accidentally enabled, a new account is unapproved and 
 
 ## Table operations
 
-All seven application tables have RLS enabled. The migrations grant authenticated users SELECT only. The policies further reduce access:
+All eleven public application tables have RLS enabled. The migrations grant authenticated users SELECT only. The policies further reduce access:
 
 - `profiles`: own row only.
-- `sample_sources`, `samples`, `processing_events`, `processing_outputs`, `processing_output_samples`, `audit_events`: all rows only when `is_approved_lab_user()` is true.
+- `sample_sources`, `samples`, processing tables, `source_registration_sessions`, `source_subjects`, `source_sample_metadata`, `sample_media`, and `audit_events`: all rows only when `is_approved_lab_user()` is true.
 - No table has an INSERT, UPDATE, or DELETE policy for `anon` or `authenticated`.
 - `anon` has all public-table privileges explicitly revoked.
 - Sequences are not callable by `anon` or `authenticated`.
@@ -47,8 +47,15 @@ Every `SECURITY DEFINER` function fixes `search_path` to `public, pg_temp`. Publ
 4. `activate_sample(text)`
 5. `mark_sample_not_created(text)`
 6. `mark_labels_printed(uuid[])`
-7. `create_sample_source(text,text,text)`
-8. `update_sample_source(uuid,text,text,text)`
+7. `create_sample_source(text,text,text,source_registration_profile)`
+8. `update_sample_source(uuid,text,text,text,source_registration_profile)`
+9. `begin_source_registration(uuid)`
+10. `record_registration_media(...)`
+11. `complete_source_registration(uuid,jsonb)`
+12. `search_inventory_sample_ids(text,boolean)`
+13. `get_sample_source_provenance(uuid)`
+
+The fifth migration replaces the Sample Source RPC signatures to include the registration profile and adds draft/media/completion/search RPCs. Each is approval-gated and fixed-search-path. Generic registration rejects a source configured for a profile workflow, and completion rejects any request without `review_confirmed=true`.
 
 Each workflow RPC begins with `assert_approved()`. `is_approved_lab_user()` is also executable by `authenticated` because PostgreSQL must call it while evaluating SELECT policies; it returns only whether the current session is approved. Internal mutation functions—including `next_sample_identifier`, `refresh_processing_event_status`, `add_output_vials_internal`, `assert_approved`, and the no-longer-public `add_output_vials` wrapper—have no browser-role EXECUTE grant.
 
@@ -77,6 +84,8 @@ Migration `202609050002_harden_inventory_rpcs.sql` fixes these issues without al
 A live catalog review then found that Supabase's project default privileges had granted authenticated users direct table privileges and EXECUTE on newly created internal functions. RLS still blocked direct table writes, but `add_output_vials_internal` was an unsafe callable `SECURITY DEFINER` path. Migration `202609060001_enforce_browser_least_privilege.sql` explicitly revokes all browser table/function/sequence privileges and reconstructs only the intended SELECT and RPC surface. This third migration is required.
 
 Migration `202609070001_sample_sources.sql` creates the RLS-protected provider/origin table, grants authenticated users SELECT only behind the approved-user policy, and exposes only audited create/update RPCs. New root samples require a valid source. A non-definer insert trigger copies the parent's source to descendants and rejects conflicting source IDs. No delete privilege or RPC exists, and the foreign key uses `ON DELETE RESTRICT`.
+
+Migration `202609070002_source_registration_profiles.sql` adds approval-gated draft sessions, donor identity, root-only metadata, private media references, and the private Storage bucket. Storage object SELECT requires approval; INSERT additionally requires the first object-path component to equal `auth.uid()`. No anonymous/public, update, or delete Storage policy is created.
 
 ## Residual limitations
 

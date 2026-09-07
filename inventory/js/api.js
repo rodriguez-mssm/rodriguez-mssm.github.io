@@ -14,19 +14,9 @@ export const api = {
   profile: async () => unwrap(supabase.from("profiles").select("id,display_name,role,approved,disabled_at").single()),
   findSamples: async (term, activeOnly = false) => {
     const selection = "*, parent:parent_sample_id(sample_id,sample_type,status), processing_event:created_by_processing_event_id(event_id), sample_source:sample_source_id(id,name,nickname,url)";
-    let idQuery = supabase.from("samples").select(selection).ilike("sample_id", `%${term}%`).order("sample_id").limit(50);
-    if (activeOnly) idQuery = idQuery.eq("status", "ACTIVE");
-    const [byId, allSources] = await Promise.all([
-      unwrap(idQuery),
-      unwrap(supabase.from("sample_sources").select("id,name,nickname")),
-    ]);
-    const normalizedTerm = term.toLocaleLowerCase();
-    const matchingSources = allSources.filter((source) => source.nickname.toLocaleLowerCase().includes(normalizedTerm) || source.name.toLocaleLowerCase().includes(normalizedTerm));
-    if (!matchingSources.length) return byId;
-    let sourceQuery = supabase.from("samples").select(selection).in("sample_source_id", matchingSources.map(({ id }) => id)).order("sample_id").limit(50);
-    if (activeOnly) sourceQuery = sourceQuery.eq("status", "ACTIVE");
-    const bySource = await unwrap(sourceQuery);
-    return [...new Map([...byId, ...bySource].map((sample) => [sample.id, sample])).values()].sort((a, b) => a.sample_id.localeCompare(b.sample_id)).slice(0, 50);
+    const matches = await unwrap(supabase.rpc("search_inventory_sample_ids", { p_term: term, p_active_only: activeOnly }));
+    if (!matches.length) return [];
+    return unwrap(supabase.from("samples").select(selection).in("id", matches.map(({ sample_uuid }) => sample_uuid)).order("sample_id"));
   },
   getSample: (sampleId) => unwrap(supabase.from("samples").select("*, parent:parent_sample_id(sample_id,sample_type,status), processing_event:created_by_processing_event_id(event_id), sample_source:sample_source_id(id,name,nickname,url)").eq("sample_id", sampleId).single()),
   children: (id) => unwrap(supabase.from("samples").select("*, sample_source:sample_source_id(id,name,nickname,url)").eq("parent_sample_id", id).order("sample_id")),
@@ -38,7 +28,26 @@ export const api = {
   markNotCreated: (sampleId) => unwrap(supabase.rpc("mark_sample_not_created", { p_sample_id: sampleId })),
   markLabelsPrinted: (sampleIds) => unwrap(supabase.rpc("mark_labels_printed", { p_sample_ids: sampleIds })),
   registerSource: (payload) => unwrap(supabase.rpc("register_source_sample", { p_payload: payload })),
-  sampleSources: () => unwrap(supabase.from("sample_sources").select("id,name,nickname,url,created_at,updated_at").order("nickname")),
-  createSampleSource: (source) => unwrap(supabase.rpc("create_sample_source", { p_name: source.name, p_nickname: source.nickname, p_url: source.url })),
-  updateSampleSource: (id, source) => unwrap(supabase.rpc("update_sample_source", { p_sample_source_id: id, p_name: source.name, p_nickname: source.nickname, p_url: source.url })),
+  sampleSources: () => unwrap(supabase.from("sample_sources").select("id,name,nickname,url,registration_profile,created_at,updated_at").order("nickname")),
+  createSampleSource: (source) => unwrap(supabase.rpc("create_sample_source", { p_name: source.name, p_nickname: source.nickname, p_url: source.url, p_registration_profile: source.registrationProfile })),
+  updateSampleSource: (id, source) => unwrap(supabase.rpc("update_sample_source", { p_sample_source_id: id, p_name: source.name, p_nickname: source.nickname, p_url: source.url, p_registration_profile: source.registrationProfile })),
+  beginSourceRegistration: (sampleSourceId) => unwrap(supabase.rpc("begin_source_registration", { p_sample_source_id: sampleSourceId })),
+  uploadRegistrationMedia: async (sessionId, file, mediaKind, documentType = null) => {
+    requireConfigured();
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session) throw new Error("Authentication is required");
+    const mediaId = crypto.randomUUID();
+    const storagePath = `${session.user.id}/${sessionId}/${mediaId}`;
+    const { error } = await supabase.storage.from("sample-media").upload(storagePath, file, { contentType: file.type, upsert: false });
+    if (error) throw error;
+    return unwrap(supabase.rpc("record_registration_media", {
+      p_registration_session_id: sessionId, p_media_id: mediaId, p_media_kind: mediaKind,
+      p_document_type: documentType, p_filename: file.name, p_storage_path: storagePath,
+      p_mime_type: file.type, p_size_bytes: file.size,
+    }));
+  },
+  completeSourceRegistration: (sessionId, payload) => unwrap(supabase.rpc("complete_source_registration", { p_registration_session_id: sessionId, p_payload: payload })),
+  sourceProvenance: (sampleId) => unwrap(supabase.rpc("get_sample_source_provenance", { p_sample_id: sampleId })),
+  sampleMedia: (sampleId) => unwrap(supabase.from("sample_media").select("id,media_kind,document_type,filename,storage_path,mime_type,uploaded_at").eq("sample_id", sampleId).order("uploaded_at")),
+  signedMediaUrl: async (path, expiresIn = 300) => unwrap(supabase.storage.from("sample-media").createSignedUrl(path, expiresIn)),
 };

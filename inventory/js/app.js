@@ -1,4 +1,4 @@
-import { api } from "./api.js";
+import { api } from "./api.js?v=202609070002";
 import { configured, supabase } from "./supabase.js";
 import { SAMPLE_TYPES, availableQuantity, formatQuantity, typeConfig } from "./sample-types.js";
 import { aliquotSourceAllocation, plannedVialCount, sourceAllocation, validateAllocation, totalMassNg, suggestVialVolumes, additionalVialsRequired, validateDistribution } from "./calculations.js";
@@ -89,25 +89,39 @@ function renderHome() {
 
 async function renderRegister() {
   const sampleSources = await api.sampleSources();
-  app.innerHTML = `${page("Register source sample", "Use laboratory identifiers only. Do not enter PHI.")}<form id="register-form" class="panel"><label>Find Sample Source<input id="sample-source-filter" type="search" placeholder="Search nickname or full name" autocomplete="off"></label><label>Sample Source<select name="sampleSourceId" required>${sampleSourceOptions(sampleSources)}</select></label><div id="sample-source-empty">${sampleSources.length ? "" : '<p class="warning">Create a Sample Source before registering a physical source sample. <a href="#/sources">Manage Sample Sources</a></p>'}</div><div class="row"><label>Sample type<select name="sampleType">${typeOptions()}</select></label><label>External/lab reference (optional)<input name="externalId" maxlength="80"></label></div><div id="register-quantity"></div><label>Notes<textarea name="notes" rows="2"></textarea></label><button ${sampleSources.length ? "" : "disabled"}>Register active source</button></form><div id="register-result"></div>`;
-  const form = document.querySelector("#register-form");
+  app.innerHTML = `${page("Register source sample", "Choose the external/provider origin first. The registration workflow adapts to its configured profile.")}<section class="panel"><label>Find Sample Source<input id="sample-source-filter" type="search" placeholder="Search nickname or full name" autocomplete="off"></label><label>Sample Source<select id="registration-source" required>${sampleSourceOptions(sampleSources)}</select></label>${sampleSources.length ? "" : '<p class="warning">Create a Sample Source before registering a physical source sample. <a href="#/sources">Manage Sample Sources</a></p>'}</section><div id="source-registration-workflow"></div>`;
+  const select = document.querySelector("#registration-source");
   const filter = document.querySelector("#sample-source-filter");
   filter.oninput = () => {
-    const selected = form.sampleSourceId.value;
-    form.sampleSourceId.innerHTML = sampleSourceOptions(filterSampleSources(sampleSources, filter.value), selected);
+    const selected = select.value;
+    select.innerHTML = sampleSourceOptions(filterSampleSources(sampleSources, filter.value), selected);
   };
+  select.onchange = async () => {
+    const container = document.querySelector("#source-registration-workflow");
+    const source = sampleSources.find((item) => item.id === select.value);
+    if (!source) { container.replaceChildren(); return; }
+    if (source.registration_profile === "STEMCELL_COA") {
+      const { mountStemcellRegistration } = await import("./stemcell-registration-ui.js");
+      await mountStemcellRegistration({ container, source, api, typeOptions, escapeHtml, toast });
+    } else renderGenericRegistration(container, source);
+  };
+}
+
+function renderGenericRegistration(container, source) {
+  container.innerHTML = `<form id="register-form" class="panel"><h2>${escapeHtml(source.nickname)} manual registration</h2><p class="muted">Use laboratory identifiers only. Do not enter PHI.</p><div class="row"><label>Sample type<select name="sampleType">${typeOptions()}</select></label><label>External/lab reference (optional)<input name="externalId" maxlength="80"></label></div><div id="register-quantity"></div><label>Notes<textarea name="notes" rows="2"></textarea></label><button>Register active source</button><div id="register-result"></div></form>`;
+  const form = container.querySelector("#register-form");
   const showFields = () => {
     const dim = typeConfig(form.sampleType.value).dimension;
-    document.querySelector("#register-quantity").innerHTML = dim === "CELLS" ? `<label>Cell count (million)<input name="cellCount" type="number" min="0" step="any" required></label>` : `<div class="row"><label>Volume (µL)<input name="volume" type="number" min="0" step="any" required></label>${dim === "NUCLEIC_ACID" ? `<label>Concentration (ng/µL)<input name="concentration" type="number" min="0" step="any"></label>` : ""}</div>`;
+    form.querySelector("#register-quantity").innerHTML = dim === "CELLS" ? `<label>Cell count (million)<input name="cellCount" type="number" min="0" step="any" required></label>` : `<div class="row"><label>Volume (µL)<input name="volume" type="number" min="0" step="any" required></label>${dim === "NUCLEIC_ACID" ? `<label>Concentration (ng/µL)<input name="concentration" type="number" min="0" step="any"></label>` : ""}</div>`;
   };
   form.sampleType.onchange = showFields; showFields();
   form.onsubmit = async (event) => {
     event.preventDefault();
     try {
-      const payload = buildSourceSamplePayload({ sampleSourceId: form.sampleSourceId.value, sampleType: form.sampleType.value, externalId: form.externalId.value, cellCount: number(form.cellCount?.value), volume: number(form.volume?.value), concentration: number(form.concentration?.value), notes: form.notes.value });
+      const payload = buildSourceSamplePayload({ sampleSourceId: source.id, sampleType: form.sampleType.value, externalId: form.externalId.value, cellCount: number(form.cellCount?.value), volume: number(form.volume?.value), concentration: number(form.concentration?.value), notes: form.notes.value });
       const result = await api.registerSource(payload);
-      document.querySelector("#register-result").innerHTML = `<p class="success">Registered <strong>${escapeHtml(result.sample_id)}</strong>.</p>`; form.reset(); showFields();
-    } catch (error) { document.querySelector("#register-result").innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
+      form.querySelector("#register-result").innerHTML = `<p class="success">Registered <strong>${escapeHtml(result.sample_id)}</strong>.</p>`; form.reset(); showFields();
+    } catch (error) { form.querySelector("#register-result").innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
   };
 }
 
@@ -117,14 +131,14 @@ function sampleSourceOptions(sources, selected = "") {
 
 async function renderSampleSources() {
   const sources = await api.sampleSources();
-  app.innerHTML = `${page("Sample Sources", "External providers and origins are separate from immediate physical parent samples.")}<section class="panel"><div class="row"><label>Search Sample Sources<input id="source-manager-search" type="search" placeholder="Nickname or full name" autocomplete="off"></label><button id="add-sample-source" type="button">Add Sample Source</button></div></section><div id="sample-source-list"></div><dialog id="sample-source-dialog"><form id="sample-source-form"><h2 id="sample-source-form-title">Add Sample Source</h2><input name="id" type="hidden"><label>Name<input name="name" maxlength="200" required></label><label>Nickname<input name="nickname" maxlength="80" required></label><label>URL (optional)<input name="url" type="url" maxlength="2048" placeholder="https://example.org/"></label><div class="row"><button type="submit">Save</button><button id="cancel-sample-source" type="button" class="secondary">Cancel</button></div><p id="sample-source-form-result" role="status"></p></form></dialog>`;
+  app.innerHTML = `${page("Sample Sources", "External providers and origins are separate from immediate physical parent samples.")}<section class="panel"><div class="row"><label>Search Sample Sources<input id="source-manager-search" type="search" placeholder="Nickname or full name" autocomplete="off"></label><button id="add-sample-source" type="button">Add Sample Source</button></div></section><div id="sample-source-list"></div><dialog id="sample-source-dialog"><form id="sample-source-form"><h2 id="sample-source-form-title">Add Sample Source</h2><input name="id" type="hidden"><label>Name<input name="name" maxlength="200" required></label><label>Nickname<input name="nickname" maxlength="80" required></label><label>URL (optional)<input name="url" type="url" maxlength="2048" placeholder="https://example.org/"></label><label>Registration profile<select name="registrationProfile"><option value="GENERIC">Generic manual registration</option><option value="STEMCELL_COA">STEMCELL COA registration</option></select></label><div class="row"><button type="submit">Save</button><button id="cancel-sample-source" type="button" class="secondary">Cancel</button></div><p id="sample-source-form-result" role="status"></p></form></dialog>`;
   const search = document.querySelector("#source-manager-search");
   const list = document.querySelector("#sample-source-list");
   const dialog = document.querySelector("#sample-source-dialog");
   const form = document.querySelector("#sample-source-form");
   const draw = () => {
     const filtered = filterSampleSources(sources, search.value);
-    list.innerHTML = filtered.length ? `<div class="list">${filtered.map((source) => `<article class="list-item"><div><h3>${escapeHtml(source.nickname)}</h3><p>${escapeHtml(source.name)}</p>${source.url ? `<p><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.url)}</a></p>` : ""}</div><button type="button" class="secondary edit-sample-source" data-id="${source.id}">Edit</button></article>`).join("")}</div>` : `<p class="muted">No Sample Sources found.</p>`;
+    list.innerHTML = filtered.length ? `<div class="list">${filtered.map((source) => `<article class="list-item"><div><h3>${escapeHtml(source.nickname)}</h3><p>${escapeHtml(source.name)}</p><p class="muted">${source.registration_profile === "STEMCELL_COA" ? "STEMCELL COA registration" : "Generic manual registration"}</p>${source.url ? `<p><a href="${escapeHtml(source.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(source.url)}</a></p>` : ""}</div><button type="button" class="secondary edit-sample-source" data-id="${source.id}">Edit</button></article>`).join("")}</div>` : `<p class="muted">No Sample Sources found.</p>`;
     list.querySelectorAll(".edit-sample-source").forEach((button) => button.onclick = () => openSourceForm(sources.find((source) => source.id === button.dataset.id)));
   };
   const openSourceForm = (source = null) => {
@@ -133,6 +147,7 @@ async function renderSampleSources() {
     form.name.value = source?.name || "";
     form.nickname.value = source?.nickname || "";
     form.url.value = source?.url || "";
+    form.registrationProfile.value = source?.registration_profile || "GENERIC";
     document.querySelector("#sample-source-form-title").textContent = source ? "Edit Sample Source" : "Add Sample Source";
     document.querySelector("#sample-source-form-result").textContent = "";
     dialog.showModal();
@@ -144,7 +159,7 @@ async function renderSampleSources() {
     event.preventDefault();
     const result = document.querySelector("#sample-source-form-result");
     try {
-      const values = validateSampleSource({ name: form.name.value, nickname: form.nickname.value, url: form.url.value });
+      const values = validateSampleSource({ name: form.name.value, nickname: form.nickname.value, url: form.url.value, registrationProfile: form.registrationProfile.value });
       const sourceId = form.elements.namedItem("id").value;
       const saved = sourceId ? await api.updateSampleSource(sourceId, values) : await api.createSampleSource(values);
       const index = sources.findIndex((source) => source.id === saved.id);
@@ -290,7 +305,7 @@ async function lookupForConfirmation(sampleId) {
 }
 
 function renderSearch() {
-  app.innerHTML = `${page("Search inventory", "Results include active and non-active sample records.")}<form id="inventory-search" class="row panel"><label>Sample ID or Sample Source<input name="term" autocomplete="off" required></label><button>Search</button></form><div id="search-results"></div>`;
+  app.innerHTML = `${page("Search inventory", "Results include active and non-active sample records.")}<form id="inventory-search" class="row panel"><label>Sample ID, Sample Source, donor ID, lot, or catalog #<input name="term" autocomplete="off" required></label><button>Search</button></form><div id="search-results"></div>`;
   document.querySelector("#inventory-search").onsubmit = async (event) => {
     event.preventDefault(); const holder = document.querySelector("#search-results"); holder.innerHTML = `<p>Searching…</p>`;
     try {
@@ -302,8 +317,15 @@ function renderSearch() {
 }
 
 async function showSampleDetail(sample) {
-  const [children, audit] = await Promise.all([api.children(sample.id), api.audit(sample.id)]); const detail = document.querySelector("#sample-detail");
-  detail.innerHTML = `<section class="panel"><h2>${escapeHtml(sample.sample_id)} ${statusBadge(sample.status)}</h2><p><strong>${escapeHtml(sample.sample_type)}</strong> · ${escapeHtml(formatQuantity(sample))}</p><p><strong>Sample Source:</strong> ${escapeHtml(sample.sample_source?.nickname || "Not assigned (legacy synthetic sample)")}${sample.sample_source?.name ? ` — ${escapeHtml(sample.sample_source.name)}` : ""}</p><p>Parent: ${escapeHtml(sample.parent?.sample_id || "None (registered source)")} · Processing event: ${escapeHtml(sample.processing_event?.event_id || "—")}</p>${sample.concentration_ng_ul != null ? `<p>Concentration: ${sample.concentration_ng_ul} ng/µL · Total mass: ${sample.total_mass_ng} ng</p>` : ""}<h3>Children</h3>${children.length ? `<ul class="tree">${children.map((child) => `<li>${escapeHtml(child.sample_id)} ${statusBadge(child.status)} · ${escapeHtml(child.sample_type)} · ${escapeHtml(child.sample_source?.nickname || "Source not assigned")}</li>`).join("")}</ul>` : `<p class="muted">No direct children.</p>`}<h3>Recent history</h3>${audit.length ? `<ul>${audit.map((item) => `<li>${new Date(item.created_at).toLocaleString()} — ${escapeHtml(item.event_type)}</li>`).join("")}</ul>` : `<p class="muted">No events.</p>`}</section>`;
+  const [children, audit, provenance] = await Promise.all([api.children(sample.id), api.audit(sample.id), api.sourceProvenance(sample.id)]);
+  const metadata = provenance?.metadata || null;
+  const media = provenance?.root_sample_id ? await api.sampleMedia(provenance.root_sample_id) : [];
+  const linkedMedia = await Promise.all(media.map(async (item) => ({ ...item, ...(await api.signedMediaUrl(item.storage_path)) })));
+  const detail = document.querySelector("#sample-detail");
+  const donor = metadata?.donor_metadata || {};
+  const metadataHtml = metadata ? `<details class="source-metadata"><summary>Source metadata</summary><dl><dt>Vendor product</dt><dd>${escapeHtml(metadata.vendor_product_name || "Missing")}</dd><dt>Catalog #</dt><dd>${escapeHtml(metadata.catalog_number || "Missing")}</dd><dt>Lot #</dt><dd>${escapeHtml(metadata.lot_number || "Missing")}</dd><dt>Donor ID</dt><dd>${escapeHtml(metadata.source_subject?.vendor_subject_id || "Missing")}</dd><dt>Processing date</dt><dd>${escapeHtml(metadata.processing_date || "Missing")}</dd><dt>Raw quantity</dt><dd>${escapeHtml(metadata.raw_quantity_text || "Missing")}</dd><dt>Viability</dt><dd>${metadata.viability_percent == null ? "Missing" : `${escapeHtml(metadata.viability_percent)}%`}</dd><dt>Age</dt><dd>${escapeHtml(donor.age ?? "Missing")}</dd><dt>Sex</dt><dd>${escapeHtml(donor.sex || "Missing")}</dd><dt>Ethnicity</dt><dd>${escapeHtml(donor.ethnicity || "Missing")}</dd><dt>Weight</dt><dd>${donor.weightKg == null ? "Missing" : `${escapeHtml(donor.weightKg)} kg`}</dd><dt>Height</dt><dd>${donor.heightCm == null ? "Missing" : `${escapeHtml(donor.heightCm)} cm`}</dd><dt>Smoker</dt><dd>${escapeHtml(donor.smoker || "Missing")}</dd><dt>Blood type</dt><dd>${escapeHtml(donor.bloodType || "Missing")}</dd><dt>Anticoagulant</dt><dd>${escapeHtml(metadata.anticoagulant || "Missing")}</dd><dt>Viral testing</dt><dd>${escapeHtml(metadata.viral_testing_result || "Missing")}${metadata.viral_testing_date ? ` (${escapeHtml(metadata.viral_testing_date)})` : ""}</dd><dt>CMV</dt><dd>${escapeHtml(metadata.cmv_status || "Missing")}${metadata.cmv_testing_date ? ` (${escapeHtml(metadata.cmv_testing_date)})` : ""}</dd></dl></details>` : "";
+  const mediaHtml = linkedMedia.length ? `<h3>Source documents and images</h3><div class="media-grid">${linkedMedia.map((item) => item.media_kind === "IMAGE" ? `<figure><img class="sample-photo" src="${escapeHtml(item.signedUrl)}" alt="Uploaded source sample"><figcaption>${escapeHtml(item.filename)}</figcaption></figure>` : `<p><a class="button secondary" href="${escapeHtml(item.signedUrl)}" target="_blank" rel="noopener noreferrer">View ${escapeHtml(item.document_type || "document")}: ${escapeHtml(item.filename)}</a></p>`).join("")}</div>` : "";
+  detail.innerHTML = `<section class="panel"><h2>${escapeHtml(sample.sample_id)} ${statusBadge(sample.status)}</h2><p><strong>${escapeHtml(sample.sample_type)}</strong> · ${escapeHtml(formatQuantity(sample))}</p><p><strong>Sample Source:</strong> ${escapeHtml(sample.sample_source?.nickname || "Not assigned (legacy synthetic sample)")}${sample.sample_source?.name ? ` — ${escapeHtml(sample.sample_source.name)}` : ""}</p><p>Parent: ${escapeHtml(sample.parent?.sample_id || "None (registered source)")} · Processing event: ${escapeHtml(sample.processing_event?.event_id || "—")}</p>${sample.concentration_ng_ul != null ? `<p>Concentration: ${sample.concentration_ng_ul} ng/µL · Total mass: ${sample.total_mass_ng} ng</p>` : ""}${metadataHtml}${mediaHtml}<h3>Children</h3>${children.length ? `<ul class="tree">${children.map((child) => `<li>${escapeHtml(child.sample_id)} ${statusBadge(child.status)} · ${escapeHtml(child.sample_type)} · ${escapeHtml(child.sample_source?.nickname || "Source not assigned")}</li>`).join("")}</ul>` : `<p class="muted">No direct children.</p>`}<h3>Recent history</h3>${audit.length ? `<ul>${audit.map((item) => `<li>${new Date(item.created_at).toLocaleString()} — ${escapeHtml(item.event_type)}</li>`).join("")}</ul>` : `<p class="muted">No events.</p>`}</section>`;
 }
 
 document.querySelector("#menu-button").onclick = () => nav.classList.toggle("open");

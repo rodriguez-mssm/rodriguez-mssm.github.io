@@ -16,6 +16,7 @@ test("valid STEMCELL Sample Source is normalized", () => {
     name: "STEMCELL Technologies",
     nickname: "STEMCELL",
     url: "https://www.stemcell.com/",
+    registrationProfile: "GENERIC",
   });
 });
 
@@ -78,5 +79,5 @@ test("processing children inherit source without frontend reselection", async ()
 test("inventory API joins and filters samples by Sample Source", async () => {
   const api = await readFile(new URL("../inventory/js/api.js", import.meta.url), "utf8");
   assert.match(api, /sample_source:sample_source_id\(id,name,nickname,url\)/);
-  assert.match(api, /\.in\("sample_source_id", matchingSources/);
+  assert.match(api, /search_inventory_sample_ids/);
 });

@@ -13,6 +13,10 @@ The repository root remains the existing README-backed GitHub Pages site. The in
 - `calculations.js`: deterministic allocation, mass, capacity, and distribution rules.
 - `api.js`: the only data-access surface used by the UI.
 - `sample-sources.js`: Sample Source input normalization, URL validation, and client-side filtering.
+- `source-registration-profiles.js`: explicit profile registry and lazy parser dispatch.
+- `source-document-parser.js`: lazy PDF.js text extraction and Tesseract OCR fallback.
+- `stemcell-coa-parser.js`: deterministic, testable STEMCELL field parsing and normalization.
+- `stemcell-registration-ui.js`: upload, review, provenance, and confirmation workflow isolated from generic registration.
 - `labels.js` / `label-config.js`: dimension-controlled PDF and 2D barcode output.
 - `scanner.js`: rear-camera Data Matrix/QR scanning and duplicate suppression.
 - `app.js`: routing and screen rendering.
@@ -23,6 +27,8 @@ The repository root remains the existing README-backed GitHub Pages site. The in
 `profiles` maps Auth identities to lab approval and the minimal `admin`/`user` role.
 
 `sample_sources` stores one external/provider origin with a UUID, unique case-insensitive nickname, full name, optional URL, creator, and timestamps. Approved users read it through RLS and create/update it only through audited RPCs. V1 intentionally provides no delete operation.
+
+`sample_sources.registration_profile` selects `GENERIC` or `STEMCELL_COA` explicitly. `source_registration_sessions` represents non-authoritative drafts. `source_subjects` stores source-scoped vendor donor identity. `source_sample_metadata` holds queryable product/lot/catalog/QC fields plus structured donor and parser provenance for the root only. `sample_media` links private Storage objects to the draft and, after confirmation, the root sample.
 
 `samples` represents one immutable planned or physical tube. A UUID is used for relationships; `sample_id` is an immutable unique label. `parent_sample_id` points to the immediate physical source, while `sample_source_id` points to the external/provider origin. Canonical quantity columns are explicit rather than a generic amount/unit pair:
 
@@ -59,3 +65,5 @@ Sample Source and parent lineage are deliberately orthogonal: Sample Source mean
 Sample lifecycle is `PLANNED → ACTIVE` or `PLANNED → NOT_CREATED`; an active sample may later become `CONSUMED` or `DISCARDED`. Extraction result status (`AWAITING_RESULTS` / `RESULTS_RECORDED`) is separate from physical-sample status. Printing is an event, not a lifecycle state.
 
 Storage locations are intentionally absent. A future storage module can reference `samples.id` and append movement events without changing the processing model.
+
+Supabase Storage's private `sample-media` bucket is document/photo storage, not freezer location tracking. Object paths use UUIDs only. Storage RLS permits approved reads and approved uploads within the current user's prefix; temporary signed URLs are generated only for authenticated detail views.

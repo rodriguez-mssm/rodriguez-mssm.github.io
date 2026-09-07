@@ -5,3 +5,7 @@ inventory/config.local.js
 .env.*
 !.env.example
 supabase/.temp/
+
+# Local-only vendor COA fixtures may contain protected research metadata.
+tests/fixtures/stemcell_coa/*.pdf
+tests/fixtures/stemcell_coa/expected.json

@@ -41,29 +41,31 @@ Run `supabase init` once because this repository currently contains migrations b
   2. `202609050002_harden_inventory_rpcs.sql`
   3. `202609060001_enforce_browser_least_privilege.sql`
   4. `202609070001_sample_sources.sql`
+  5. `202609070002_source_registration_profiles.sql`
 - [ ] Apply all pending migrations with `supabase db push`.
-- [ ] Confirm all four versions appear as local and remote in `supabase migration list`.
+- [ ] Confirm all five versions appear as local and remote in `supabase migration list`.
 
 If the CLI cannot be used, open **SQL Editor → New query**, run the complete first migration, then the complete second migration. Record this operational exception: SQL Editor execution does not populate CLI migration history. Do not later use `db push` until migration history has been reconciled.
 
 ## 4. Verify the database objects
 
-- [ ] Open **Table Editor** and confirm: `profiles`, `sample_sources`, `samples`, `processing_events`, `processing_outputs`, `processing_output_samples`, and `audit_events`.
-- [ ] Open **Database → Functions** and confirm the V1 RPCs exist: `register_source_sample`, `create_sample_source`, `update_sample_source`, `create_processing_plan`, `record_extraction_results`, `activate_sample`, `mark_sample_not_created`, and `mark_labels_printed`. Internal helpers should also exist but are not granted to browser roles.
+- [ ] Open **Table Editor** and confirm the prior seven tables plus `source_registration_sessions`, `source_subjects`, `source_sample_metadata`, and `sample_media`.
+- [ ] Open **Storage** and confirm `sample-media` exists and is marked private. Do not make it public.
+- [ ] Open **Database → Functions** and confirm the prior RPCs plus `begin_source_registration`, `record_registration_media`, `complete_source_registration`, `search_inventory_sample_ids`, and `get_sample_source_provenance`. Internal helpers should also exist but are not granted to browser roles.
 - [ ] Open **Database → Triggers** and confirm `auth_user_profile` is attached to `auth.users` and calls `handle_new_user`.
-- [ ] Open **Database → Policies**. Confirm RLS is enabled on all seven public tables. Confirm the only policies are self-read on `profiles` and approved-user SELECT policies on inventory/audit tables. There must be no `anon` policy and no direct INSERT/UPDATE/DELETE policy.
-- [ ] In **SQL Editor → New query**, run the verification query below. Expect seven rows, each with `rowsecurity = true`:
+- [ ] Open **Database → Policies**. Confirm RLS is enabled on all eleven public tables. Confirm the public-schema policies are self-read on `profiles` and approved-user SELECT policies on inventory/audit tables. Confirm Storage policies require approved users and no public/anonymous media policy exists.
+- [ ] In **SQL Editor → New query**, run the verification query below. Expect eleven rows, each with `rowsecurity = true`:
 
 ```sql
 select c.relname, c.relrowsecurity
 from pg_class c
 join pg_namespace n on n.oid = c.relnamespace
 where n.nspname = 'public'
-  and c.relname in ('profiles','sample_sources','samples','processing_events','processing_outputs','processing_output_samples','audit_events')
+  and c.relname in ('profiles','sample_sources','samples','processing_events','processing_outputs','processing_output_samples','audit_events','source_registration_sessions','source_subjects','source_sample_metadata','sample_media')
 order by c.relname;
 ```
 
-- [ ] Verify callable browser functions. The result should contain the six processing RPCs, the two Sample Source RPCs, and `is_approved_lab_user` (the boolean predicate required by RLS). `add_output_vials`, `add_output_vials_internal`, identifier generators, trigger functions, mutation helpers, and `assert_approved` must not be executable by `authenticated`:
+- [ ] Verify callable browser functions. The result should contain the prior controlled RPCs plus `begin_source_registration`, `record_registration_media`, `complete_source_registration`, `search_inventory_sample_ids`, and `get_sample_source_provenance`. Internal mutation helpers and trigger functions must not be executable by `authenticated`.
 
 ```sql
 select p.proname
@@ -150,7 +152,7 @@ The application has no signup form and no browser administration panel. Disablin
 
 The repository’s verified Pages configuration is **legacy branch deployment**, `main`, `/(root)`, public, with HTTPS enforced.
 
-- [ ] Commit the reviewed files, including all four migrations and `inventory/config.js` containing only the public URL/key.
+- [ ] Commit the reviewed files, including all five migrations and `inventory/config.js` containing only the public URL/key.
 - [ ] Push the commit to `origin/main`.
 - [ ] On GitHub open **rodriguez-mssm/rodriguez-mssm.github.io → Settings → Pages**.
 - [ ] Under **Build and deployment**, confirm **Deploy from a branch**, branch **main**, folder **/(root)**. Do not change it to `/docs`; that would omit `inventory/` and alter the current site.
