@@ -29,7 +29,9 @@ Register `PBMC-000001` with 100 million cells. In one Process Sample plan add:
 
 The allocation display shows 100M available, 100M allocated, and 0M expected remaining. An additional allocation is blocked in both browser validation and the locked database transaction. Generate one PDF containing all planned labels. Every output remains `PLANNED`.
 
-For the DNA result, open Pending Processing and enter actual volume `92` and concentration `70`. The app calculates 6,440 ng = 6.44 µg and suggests `50 + 42` µL. `46 + 46` is also valid. Both used planned DNA tubes retain 70 ng/µL and calculate their own mass after physical activation. Scan each label and explicitly activate its physical tube.
+For the DNA result, open Pending Processing and enter actual volume `92` and Qubit concentration `70`. The app calculates 6,440 ng = 6.44 µg and suggests `50 + 42` µL. `46 + 46` is also valid. Optionally enter raw NanoDrop A230/A260/A280, DIN (DNA) or RIN (RNA), and private integrity traces. Ratios are calculated and are guidance—not pass/fail gates. Both used planned DNA tubes inherit the homogeneous 70 ng/µL Qubit value and calculate their own mass after physical activation; their detail views say the pooled QC came from the extraction. Scan each label and explicitly activate its physical tube.
+
+Extraction QC covers extracted DNA/RNA yield, purity, integrity score, and genomic DNA/RNA trace. Sequencing-library concentration and post-library-preparation fragment distributions are library QC and are intentionally outside this workflow, including for samples considered for ONT sequencing.
 
 ## Scenario 2: serum aliquots with unused labels
 

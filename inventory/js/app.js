@@ -1,4 +1,4 @@
-import { api } from "./api.js?v=202609070006";
+import { api } from "./api.js?v=202609070007";
 import { configured, supabase } from "./supabase.js";
 import { SAMPLE_TYPES, availableQuantity, formatQuantity, typeConfig } from "./sample-types.js";
 import { aliquotSourceAllocation, plannedVialCount, sourceAllocation, validateAllocation, totalMassNg, suggestVialVolumes, additionalVialsRequired, validateDistribution } from "./calculations.js";
@@ -9,6 +9,7 @@ import { emptyInventoryHtml, scannerUnavailableHtml } from "./ui-state.js";
 import { buildProcessingPlanPayload } from "./processing-payload.js";
 import { filterSampleSources, validateSampleSource } from "./sample-sources.js";
 import { buildSourceSamplePayload } from "./registration-payload.js";
+import { nanodropRatios, validateIntegrity } from "./qc-calculations.js";
 
 const app = document.querySelector("#app");
 const header = document.querySelector(".app-header");
@@ -300,27 +301,44 @@ async function renderPending() {
 function renderResults(output) {
   stopPendingTracker();
   const planned = output.output_samples.length; const max = Number(output.max_vial_volume_ul);
-  app.innerHTML = `${page(`Enter ${escapeHtml(output.output_type)} results`, `${escapeHtml(output.processing_event.event_id)} · ${planned} planned vial(s) · ${max} µL maximum each`)}<form id="results-form" class="panel"><div class="row"><label>Actual volume (µL)<input name="volume" type="number" min="0" step="any" required></label><label>Concentration (ng/µL)<input name="concentration" type="number" min="0" step="any" required></label></div><div id="yield-summary"></div><label>Vial distribution (µL, separated by + or commas)<input name="distribution" placeholder="50 + 42" required></label><div id="capacity-warning"></div><label><input name="override" type="checkbox" style="width:auto"> Permit a vial above configured capacity (recorded in audit)</label><button>Record results</button></form><div id="results-result"></div>`;
+  const integrity = output.output_type === "RNA" ? "RIN" : "DIN";
+  app.innerHTML = `${page(`Enter ${escapeHtml(output.output_type)} results`, `${escapeHtml(output.processing_event.event_id)} · ${planned} planned vial(s) · ${max} µL maximum each`)}<form id="results-form" class="panel"><h2>Yield / quantification</h2><div class="row"><label>Actual volume (µL)<input name="volume" type="number" min="0" step="any" required></label><label>Qubit concentration (ng/µL)<input name="qubit" type="number" min="0" step="any" required></label></div><div id="yield-summary"></div><details><summary>NanoDrop purity (optional)</summary><p class="hint">Raw absorbance is stored; ratios are calculated automatically. Approximate reference values are guidance only: A260/A280 ~1.8 and A260/A230 ~2.0–2.2.</p><div class="row"><label>A230<input name="a230" type="number" min="0" step="any"></label><label>A260<input name="a260" type="number" min="0" step="any"></label><label>A280<input name="a280" type="number" min="0" step="any"></label></div><div id="purity-summary"></div></details><h2>Integrity</h2><label>${integrity} (optional, 1–10)<input name="integrity" type="number" min="1" max="10" step="any"></label><details><summary>Fragment / integrity traces (optional)</summary><div class="row"><label>Instrument/platform<select name="instrument"><option value="">Not recorded</option><option value="TAPESTATION">TapeStation</option><option value="BIOANALYZER">Bioanalyzer</option><option value="FRAGMENT_ANALYZER">Fragment Analyzer</option><option value="OTHER">Other</option></select></label><label>Instrument model<input name="instrumentModel"></label><label>Measurement date<input name="measurementDate" type="date"></label></div><label>Notes<textarea name="traceNotes"></textarea></label><label>Upload trace(s): PDF, PNG, or JPEG<input name="traces" type="file" accept="application/pdf,image/png,image/jpeg" multiple></label></details><h2>Vial distribution</h2><label>Vial distribution (µL, separated by + or commas)<input name="distribution" placeholder="50 + 42" required></label><div id="capacity-warning"></div><label><input name="override" type="checkbox" style="width:auto"> Permit a vial above configured capacity (recorded in audit)</label><button>Record results</button></form><div id="results-result"></div>`;
   const form = document.querySelector("#results-form");
+  let tracesUploaded = false;
   const recalc = () => {
-    const volume = number(form.volume.value); const concentration = number(form.concentration.value);
+    const volume = number(form.volume.value); const concentration = number(form.qubit.value);
     if (volume == null || volume < 0) return;
     const suggested = suggestVialVolumes(volume, max); if (document.activeElement !== form.distribution) form.distribution.value = suggested.join(" + ");
     const mass = concentration == null ? null : totalMassNg(volume, concentration); const extra = additionalVialsRequired(volume, planned, max);
     document.querySelector("#yield-summary").innerHTML = mass == null ? "" : `<div class="metric">Total mass<b>${mass.toLocaleString()} ng (${(mass / 1000).toLocaleString()} µg)</b></div>`;
     document.querySelector("#capacity-warning").innerHTML = extra ? `<p class="warning">Actual output exceeds planned capacity. ${extra} additional vial${extra === 1 ? " is" : "s are"} required. Additional IDs and labels will be generated when results are saved.</p>` : "";
+    const ratios = nanodropRatios({ a230: number(form.a230.value), a260: number(form.a260.value), a280: number(form.a280.value) });
+    document.querySelector("#purity-summary").innerHTML = `<div class="summary"><div class="metric">A260/A280<b>${ratios.a260A280 == null ? "Unavailable" : ratios.a260A280.toFixed(4)}</b></div><div class="metric">A260/A230<b>${ratios.a260A230 == null ? "Unavailable" : ratios.a260A230.toFixed(4)}</b></div></div>`;
   };
-  form.volume.oninput = recalc; form.concentration.oninput = recalc;
+  for (const field of [form.volume, form.qubit, form.a230, form.a260, form.a280]) field.oninput = recalc;
+  recalc();
   form.onsubmit = async (event) => {
-    event.preventDefault(); const volume = Number(form.volume.value); const concentration = Number(form.concentration.value); const volumes = form.distribution.value.split(/[+,]/).map((v) => Number(v.trim())).filter((v) => Number.isFinite(v));
+    event.preventDefault(); const volume = Number(form.volume.value); const concentration = Number(form.qubit.value); const volumes = form.distribution.value.split(/[+,]/).map((v) => Number(v.trim())).filter((v) => Number.isFinite(v));
     const validation = validateDistribution(volumes, volume, max, form.override.checked);
     if (!validation.valid) return document.querySelector("#results-result").innerHTML = `<p class="error">${escapeHtml(validation.error)}</p>`;
+    const integrityValidation = validateIntegrity(output.output_type, form.integrity.value);
+    if (!integrityValidation.valid) return document.querySelector("#results-result").innerHTML = `<p class="error">${escapeHtml(integrityValidation.error)}</p>`;
     try {
-      const result = await api.recordResults(output.id, volume, concentration, volumes, form.override.checked);
+      const button = form.querySelector("button[type='submit'], button:not([type])"); button.disabled = true;
+      const traceDetails = { qcType: `${output.output_type}_INTEGRITY_TRACE`, instrumentType: form.instrument.value || null, instrumentModel: form.instrumentModel.value, measurementDate: form.measurementDate.value || null, notes: form.traceNotes.value };
+      if (!tracesUploaded) {
+        for (const file of form.traces.files) await api.uploadQcArtifact(output.id, file, traceDetails);
+        tracesUploaded = true;
+      }
+      const result = await api.recordResultsWithQc(output.id, volume, concentration, volumes, form.override.checked, {
+        a230: number(form.a230.value), a260: number(form.a260.value), a280: number(form.a280.value),
+        din: output.output_type === "DNA" ? integrityValidation.value : null,
+        rin: output.output_type === "RNA" ? integrityValidation.value : null, measuredAt: null,
+      });
       const added = result.additional_samples || [];
       document.querySelector("#results-result").innerHTML = `<p class="success">Results recorded. ${result.activated_ready_count} vial(s) are ready for physical confirmation.</p>${added.length ? `<button id="print-extra">Generate ${added.length} additional label(s)</button>` : ""}`;
       if (added.length) document.querySelector("#print-extra").onclick = async () => { await printLabels(added); };
-    } catch (error) { document.querySelector("#results-result").innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
+    } catch (error) { form.querySelector("button[type='submit'], button:not([type])").disabled = false; document.querySelector("#results-result").innerHTML = `<p class="error">Results or a QC trace could not be saved: ${errorMessage(error)}</p>`; }
   };
 }
 
@@ -357,7 +375,7 @@ function renderSearch() {
 }
 
 async function showSampleDetail(sample) {
-  const [children, audit, provenance] = await Promise.all([api.children(sample.id), api.audit(sample.id), api.sourceProvenance(sample.id)]);
+  const [children, audit, provenance, extractionQc] = await Promise.all([api.children(sample.id), api.audit(sample.id), api.sourceProvenance(sample.id), api.extractionQc(sample.id)]);
   const metadata = provenance?.metadata || null;
   const media = provenance?.root_sample_id ? await api.sampleMedia(provenance.root_sample_id) : [];
   const linkedMedia = await Promise.all(media.map(async (item) => ({ ...item, ...(await api.signedMediaUrl(item.storage_path)) })));
@@ -365,7 +383,11 @@ async function showSampleDetail(sample) {
   const donor = metadata?.donor_metadata || {};
   const metadataHtml = metadata ? `<details class="source-metadata"><summary>Source metadata</summary><dl><dt>Vendor product</dt><dd>${escapeHtml(metadata.vendor_product_name || "Missing")}</dd><dt>Catalog #</dt><dd>${escapeHtml(metadata.catalog_number || "Missing")}</dd><dt>Lot #</dt><dd>${escapeHtml(metadata.lot_number || "Missing")}</dd><dt>Donor ID</dt><dd>${escapeHtml(metadata.source_subject?.vendor_subject_id || "Missing")}</dd><dt>Processing date</dt><dd>${escapeHtml(metadata.processing_date || "Missing")}</dd><dt>Raw quantity</dt><dd>${escapeHtml(metadata.raw_quantity_text || "Missing")}</dd><dt>Viability</dt><dd>${metadata.viability_percent == null ? "Missing" : `${escapeHtml(metadata.viability_percent)}%`}</dd><dt>Age</dt><dd>${escapeHtml(donor.age ?? "Missing")}</dd><dt>Sex</dt><dd>${escapeHtml(donor.sex || "Missing")}</dd><dt>Ethnicity</dt><dd>${escapeHtml(donor.ethnicity || "Missing")}</dd><dt>Weight</dt><dd>${donor.weightKg == null ? "Missing" : `${escapeHtml(donor.weightKg)} kg`}</dd><dt>Height</dt><dd>${donor.heightCm == null ? "Missing" : `${escapeHtml(donor.heightCm)} cm`}</dd><dt>Smoker</dt><dd>${escapeHtml(donor.smoker || "Missing")}</dd><dt>Blood type</dt><dd>${escapeHtml(donor.bloodType || "Missing")}</dd><dt>Anticoagulant</dt><dd>${escapeHtml(metadata.anticoagulant || "Missing")}</dd><dt>Viral testing</dt><dd>${escapeHtml(metadata.viral_testing_result || "Missing")}${metadata.viral_testing_date ? ` (${escapeHtml(metadata.viral_testing_date)})` : ""}</dd><dt>CMV</dt><dd>${escapeHtml(metadata.cmv_status || "Missing")}${metadata.cmv_testing_date ? ` (${escapeHtml(metadata.cmv_testing_date)})` : ""}</dd></dl></details>` : "";
   const mediaHtml = linkedMedia.length ? `<h3>Source documents and images</h3><div class="media-grid">${linkedMedia.map((item) => item.media_kind === "IMAGE" ? `<figure><img class="sample-photo" src="${escapeHtml(item.signedUrl)}" alt="Uploaded source sample"><figcaption>${escapeHtml(item.filename)}</figcaption></figure>` : `<p><a class="button secondary" href="${escapeHtml(item.signedUrl)}" target="_blank" rel="noopener noreferrer">View ${escapeHtml(item.document_type || "document")}: ${escapeHtml(item.filename)}</a></p>`).join("")}</div>` : "";
-  detail.innerHTML = `<section class="panel"><h2>${escapeHtml(sample.sample_id)} ${statusBadge(sample.status)}</h2><p><strong>${escapeHtml(sample.sample_type)}</strong> · ${escapeHtml(formatQuantity(sample))}</p><p><strong>Sample Source:</strong> ${escapeHtml(sample.sample_source?.nickname || "Not assigned (legacy synthetic sample)")}${sample.sample_source?.name ? ` — ${escapeHtml(sample.sample_source.name)}` : ""}</p><p>Parent: ${escapeHtml(sample.parent?.sample_id || "None (registered source)")} · Processing event: ${escapeHtml(sample.processing_event?.event_id || "—")}</p>${sample.concentration_ng_ul != null ? `<p>Concentration: ${sample.concentration_ng_ul} ng/µL · Total mass: ${sample.total_mass_ng} ng</p>` : ""}${metadataHtml}${mediaHtml}<h3>Children</h3>${children.length ? `<ul class="tree">${children.map((child) => `<li>${escapeHtml(child.sample_id)} ${statusBadge(child.status)} · ${escapeHtml(child.sample_type)} · ${escapeHtml(child.sample_source?.nickname || "Source not assigned")}</li>`).join("")}</ul>` : `<p class="muted">No direct children.</p>`}<h3>Recent history</h3>${audit.length ? `<ul>${audit.map((item) => `<li>${new Date(item.created_at).toLocaleString()} — ${escapeHtml(item.event_type)}</li>`).join("")}</ul>` : `<p class="muted">No events.</p>`}</section>`;
+  const qc = extractionQc?.measurement;
+  const artifacts = extractionQc?.artifacts || [];
+  const linkedArtifacts = await Promise.all(artifacts.map(async (item) => ({ ...item, ...(await api.signedMediaUrl(item.storage_path)) })));
+  const qcHtml = qc ? `<h3>Extraction QC</h3><p class="hint">QC inherited from the pooled extraction (${escapeHtml(extractionQc.processing_event_id)}); it is not an independent vial measurement.</p><dl><dt>Qubit</dt><dd>${escapeHtml(qc.qubit_concentration_ng_ul)} ng/µL</dd><dt>Extraction volume</dt><dd>${escapeHtml(qc.actual_volume_ul)} µL</dd><dt>Total ${escapeHtml(qc.material_type)}</dt><dd>${escapeHtml(qc.total_mass_ng)} ng (${escapeHtml(Number(qc.total_mass_ng) / 1000)} µg)</dd><dt>A260</dt><dd>${escapeHtml(qc.a260 ?? "Not measured")}</dd><dt>A280</dt><dd>${escapeHtml(qc.a280 ?? "Not measured")}</dd><dt>A230</dt><dd>${escapeHtml(qc.a230 ?? "Not measured")}</dd><dt>A260/A280</dt><dd>${qc.a260_a280_ratio == null ? "Unavailable" : escapeHtml(Number(qc.a260_a280_ratio).toFixed(4))}</dd><dt>A260/A230</dt><dd>${qc.a260_a230_ratio == null ? "Unavailable" : escapeHtml(Number(qc.a260_a230_ratio).toFixed(4))}</dd><dt>${qc.material_type === "DNA" ? "DIN" : "RIN"}</dt><dd>${escapeHtml((qc.material_type === "DNA" ? qc.din : qc.rin) ?? "Not measured")}</dd></dl>${linkedArtifacts.length ? `<h4>Fragment / integrity traces</h4>${linkedArtifacts.map((item) => `<p><a class="button secondary" href="${escapeHtml(item.signedUrl)}" target="_blank" rel="noopener noreferrer">View ${escapeHtml(item.filename)}</a> · ${escapeHtml((item.instrument_type || "Instrument not recorded").replaceAll("_", " "))}</p>`).join("")}` : ""}` : "";
+  detail.innerHTML = `<section class="panel"><h2>${escapeHtml(sample.sample_id)} ${statusBadge(sample.status)}</h2><p><strong>${escapeHtml(sample.sample_type)}</strong> · ${escapeHtml(formatQuantity(sample))}</p><p><strong>Sample Source:</strong> ${escapeHtml(sample.sample_source?.nickname || "Not assigned (legacy synthetic sample)")}${sample.sample_source?.name ? ` — ${escapeHtml(sample.sample_source.name)}` : ""}</p><p>Parent: ${escapeHtml(sample.parent?.sample_id || "None (registered source)")} · Processing event: ${escapeHtml(sample.processing_event?.event_id || "—")}</p>${sample.concentration_ng_ul != null ? `<p>${qc ? "Qubit concentration" : "Concentration (legacy method unspecified)"}: ${sample.concentration_ng_ul} ng/µL · Vial mass: ${sample.total_mass_ng} ng</p>` : ""}${qcHtml}${metadataHtml}${mediaHtml}<h3>Children</h3>${children.length ? `<ul class="tree">${children.map((child) => `<li>${escapeHtml(child.sample_id)} ${statusBadge(child.status)} · ${escapeHtml(child.sample_type)} · ${escapeHtml(child.sample_source?.nickname || "Source not assigned")}</li>`).join("")}</ul>` : `<p class="muted">No direct children.</p>`}<h3>Recent history</h3>${audit.length ? `<ul>${audit.map((item) => `<li>${new Date(item.created_at).toLocaleString()} — ${escapeHtml(item.event_type)}</li>`).join("")}</ul>` : `<p class="muted">No events.</p>`}</section>`;
 }
 
 document.querySelector("#menu-button").onclick = () => nav.classList.toggle("open");

@@ -15,7 +15,7 @@ Camera access on a non-localhost development address generally requires HTTPS. T
 ## Supabase setup
 
 1. Create a Supabase project in the desired compliant organizational account and record its Project URL and publishable key (or legacy anon key).
-2. Apply migrations with the Supabase CLI: `supabase link --project-ref PROJECT_REF`, then `supabase db push`. Alternatively, run every migration in filename order in the SQL editor. Existing deployments should apply `202609070002_source_registration_profiles.sql` and then `202609070003_require_stemcell_intake_photo.sql` after the Sample Sources migration.
+2. Apply migrations with the Supabase CLI: `supabase link --project-ref PROJECT_REF`, then `supabase db push`. Alternatively, run every migration in filename order in the SQL editor. Existing deployments should apply `202609070002_source_registration_profiles.sql`, `202609070003_require_stemcell_intake_photo.sql`, and `202609070004_extraction_qc.sql` in that order after the Sample Sources migration.
 3. In Authentication settings, enable Email provider. Disable public sign-ups unless the lab explicitly wants self-registration; this app intentionally has no sign-up form.
 4. Set the Site URL to `https://rodriguez-mssm.github.io/inventory/` and add local/deployed redirect URLs as needed.
 5. Put the Project URL and publishable/anon key in `inventory/config.js` and deploy. Do not commit a service-role key.
@@ -73,6 +73,12 @@ Pinned browser dependencies are loaded from `esm.sh`. A future regulated/offline
 Before each PDF, choose a start position from 1–85. Overflow is blocked unless **Allow additional pages** is explicitly selected. The **Label calibration** home card produces a full boundary/position sheet. Print it at **Actual size / 100%**, disable all fitting/scaling, and overlay it against the physical sheet. The template is not production-ready until that manual calibration passes; adjust only `js/label-config.js` if measurements require correction.
 
 Data Matrix is the default because it is compact. The generator falls back to QR if Data Matrix generation fails. Codes contain only `sample_id`.
+
+## DNA/RNA extraction QC
+
+**Pending processing → Enter results** records actual volume and an explicitly identified Qubit concentration, then calculates total ng and µg and retains the existing vial-distribution workflow. Optional extraction-level QC includes raw NanoDrop A230/A260/A280, generated purity ratios, DNA DIN or RNA RIN, and one or more PDF/PNG/JPEG fragment/integrity traces.
+
+QC belongs to the pooled `processing_output`, not to each child vial. Derived vial detail pages identify it as inherited extraction QC; only vial volume, inherited homogeneous Qubit concentration, and calculated vial mass are vial-specific. Trace files use the existing private `sample-media` bucket and short-lived signed links. Extraction QC is not sequencing-library QC and does not apply ONT pass/fail thresholds.
 
 ## Camera permissions
 

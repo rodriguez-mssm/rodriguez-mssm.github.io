@@ -157,5 +157,13 @@ The implementation’s exact V1 event names are:
 - `EXTRACTION_RESULTS_RECORDED`
 - `SAMPLE_NOT_CREATED`
 - `ADDITIONAL_VIAL_CREATED`
+- `EXTRACTION_QC_RECORDED`
+- `QC_TRACE_UPLOADED` (when a trace is attached)
 
 For each acceptance event, verify `actor_id`, timestamp, related sample/event/output UUIDs where applicable, and synthetic-only metadata. Normal application users must be unable to update or delete these rows.
+
+## Extraction QC acceptance extension
+
+Using only the synthetic DNA/RNA outputs above, enter DNA volume 92 µL and Qubit 70 ng/µL; verify 6,440 ng and 6.44 µg. Enter A260 1.42, A280 0.78, and A230 0.68; verify displayed ratios approximately 1.8205 and 2.0882. Verify zero denominators display Unavailable. Verify DNA shows DIN (8.9 accepted, 11 rejected) and RNA shows RIN (9.1 accepted, -1 rejected).
+
+Attach a synthetic PDF/PNG/JPEG trace and instrument metadata. After result entry, open each derived vial and verify the same QC is clearly marked as inherited from the pooled extraction and the trace opens through a temporary signed URL. Confirm `EXTRACTION_QC_RECORDED` and `QC_TRACE_UPLOADED` audit rows. Repeat Storage reads while anonymous and authenticated-but-unapproved and verify denial; an approved user must be able to upload beneath only their own UUID prefix and view the linked trace.

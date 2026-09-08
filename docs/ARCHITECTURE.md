@@ -11,6 +11,7 @@ The repository root remains the existing README-backed GitHub Pages site. The in
 - `config.js`: deployment-specific public Supabase coordinates.
 - `sample-types.js`: centralized material dimensions and canonical units.
 - `calculations.js`: deterministic allocation, mass, capacity, and distribution rules.
+- `qc-calculations.js`: deterministic NanoDrop ratios and DIN/RIN validation.
 - `api.js`: the only data-access surface used by the UI.
 - `sample-sources.js`: Sample Source input normalization, URL validation, and client-side filtering.
 - `source-registration-profiles.js`: explicit profile registry and lazy parser dispatch.
@@ -44,6 +45,10 @@ This strongly typed V1 is easier to validate and query than an entity-attribute-
 
 `processing_output_samples` gives each output’s physical sample records a stable ordinal and records whether an extra vial was added.
 
+`extraction_qc_measurements` stores revision-ready, strongly typed pooled-extraction measurements on `processing_outputs`: actual volume, explicit Qubit concentration, generated total mass, raw A230/A260/A280, generated null-safe ratios, and type-specific DIN/RIN. Important fields are columns and indexed rather than opaque JSON. A partial unique index permits only one current revision per extraction. The existing `processing_outputs.concentration_ng_ul` and descendant sample concentration remain the homogeneous Qubit value for compatibility and vial-mass calculations.
+
+`extraction_qc_artifacts` links one or more private trace objects to the extraction output with artifact type, instrument/platform, optional model/date/notes, filename, MIME type, and UUID-only Storage path. These are extraction integrity/fragment traces, not post-library-preparation QC.
+
 `audit_events` is append-only to application users. It records planning, label reservation/printing, activation, result entry, unused labels, and additional vials. Corrections should append a future correction event rather than rewrite history silently.
 
 ## Transaction and concurrency rules
@@ -66,4 +71,4 @@ Sample lifecycle is `PLANNED → ACTIVE` or `PLANNED → NOT_CREATED`; an active
 
 Storage locations are intentionally absent. A future storage module can reference `samples.id` and append movement events without changing the processing model.
 
-Supabase Storage's private `sample-media` bucket is document/photo storage, not freezer location tracking. Object paths use UUIDs only. Storage RLS permits approved reads and approved uploads within the current user's prefix; temporary signed URLs are generated only for authenticated detail views.
+Supabase Storage's private `sample-media` bucket stores source documents/photos and extraction QC traces; it is not freezer location tracking. Object paths use UUIDs only. Storage RLS permits approved reads and approved uploads within the current user's prefix; temporary signed URLs are generated only for authenticated detail views.

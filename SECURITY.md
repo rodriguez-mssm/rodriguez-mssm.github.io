@@ -10,7 +10,7 @@ All inventory tables, including `sample_sources`, enable RLS. There are no anony
 
 Sample Source metadata is protected research inventory metadata. Approved users may select it and may call only `create_sample_source` and `update_sample_source` for changes. Both are fixed-`search_path` `SECURITY DEFINER` functions, assert approval, and append audit events. There is no browser delete function or direct INSERT/UPDATE/DELETE grant; referenced sources are additionally protected by `ON DELETE RESTRICT`.
 
-COAs, photos, vendor donor identifiers, demographics, and source metadata follow the same approval boundary. The `sample-media` bucket is private. Storage RLS grants no anonymous access; approved users can read objects and can upload only beneath their own authenticated UUID prefix. Human-readable identifiers are excluded from object paths. Detail views use short-lived signed URLs, which should not be shared.
+COAs, photos, QC traces, vendor donor identifiers, demographics, source metadata, and extraction QC follow the same approval boundary. The `sample-media` bucket is private. Storage RLS grants no anonymous access; approved users can read objects and can upload only beneath their own authenticated UUID prefix. Human-readable identifiers are excluded from object paths. Detail views use short-lived signed URLs, which should not be shared.
 
 PDF text extraction and OCR run in the authenticated browser. No COA or image is sent to an external AI or document-processing service. PDF.js and Tesseract.js are pinned CDN dependencies and carry the supply-chain limitations described below.
 
@@ -39,10 +39,12 @@ After applying migrations:
 7. Repeat anonymous and unapproved reads against `/rest/v1/sample_sources?select=*`; expect no rows. Confirm approved reads and the two approved-user RPCs work.
 8. Repeat against `source_registration_sessions`, `source_subjects`, `source_sample_metadata`, and `sample_media`; expect no rows. Attempt download from the private `sample-media` bucket and expect denial.
 9. As an approved user, verify upload under another user's UUID prefix is rejected and that no browser DELETE policy exists.
+10. Repeat table reads against `extraction_qc_measurements` and `extraction_qc_artifacts`: anonymous and unapproved sessions see no rows; approved sessions may read. Direct INSERT/UPDATE/DELETE must fail for every browser role.
+11. Verify only authenticated users can execute `record_extraction_results_with_qc`, `record_extraction_qc_artifact`, and `get_extraction_qc_for_sample`; each function independently calls `assert_approved()` and uses fixed `search_path = public, pg_temp`.
 
 Static source tests in `tests/security.test.js` guard against accidentally omitting RLS or granting anon policies, but they do not replace live integration verification.
 
-The detailed operation-by-operation review and RPC-hardening findings are documented in `docs/RLS_REVIEW.md`. Apply all six migrations in timestamp order. `202609070002_source_registration_profiles.sql` adds protected draft registration, metadata, media, and private Storage after the Sample Sources migration; `202609070003_require_stemcell_intake_photo.sql` makes the photo mandatory at the database boundary for STEMCELL intake.
+The detailed operation-by-operation review and RPC-hardening findings are documented in `docs/RLS_REVIEW.md`. Apply migrations in timestamp order. `202609070002_source_registration_profiles.sql` adds protected draft registration, metadata, media, and private Storage; `202609070003_require_stemcell_intake_photo.sql` makes the photo mandatory at the database boundary for STEMCELL intake; `202609070004_extraction_qc.sql` adds pooled extraction QC, private trace metadata, read-only approved-user RLS, and hardened controlled RPCs.
 
 ## Browser and supply-chain limitations
 

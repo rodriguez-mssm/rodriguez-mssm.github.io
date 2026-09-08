@@ -30,6 +30,27 @@ export const api = {
   },
   createPlan: (payload) => unwrap(supabase.rpc("create_processing_plan", { p_payload: payload })),
   recordResults: (outputId, actualVolumeUl, concentrationNgUl, vialVolumes, allowOverCapacity = false) => unwrap(supabase.rpc("record_extraction_results", { p_output_id: outputId, p_actual_volume_ul: actualVolumeUl, p_concentration_ng_ul: concentrationNgUl, p_vial_volumes: vialVolumes, p_allow_over_capacity: allowOverCapacity })),
+  recordResultsWithQc: (outputId, actualVolumeUl, qubitConcentrationNgUl, vialVolumes, allowOverCapacity, qc) => unwrap(supabase.rpc("record_extraction_results_with_qc", {
+    p_output_id: outputId, p_actual_volume_ul: actualVolumeUl, p_qubit_concentration_ng_ul: qubitConcentrationNgUl,
+    p_vial_volumes: vialVolumes, p_allow_over_capacity: allowOverCapacity,
+    p_a230: qc.a230, p_a260: qc.a260, p_a280: qc.a280, p_din: qc.din, p_rin: qc.rin, p_measured_at: qc.measuredAt,
+  })),
+  uploadQcArtifact: async (outputId, file, details) => {
+    requireConfigured();
+    const session = (await supabase.auth.getSession()).data.session;
+    if (!session) throw new Error("Authentication is required");
+    const artifactId = crypto.randomUUID();
+    const storagePath = `${session.user.id}/qc/${outputId}/${artifactId}`;
+    const { error } = await supabase.storage.from("sample-media").upload(storagePath, file, { contentType: file.type, upsert: false });
+    if (error) throw error;
+    return unwrap(supabase.rpc("record_extraction_qc_artifact", {
+      p_output_id: outputId, p_artifact_id: artifactId, p_qc_type: details.qcType,
+      p_instrument_type: details.instrumentType, p_instrument_model: details.instrumentModel,
+      p_measurement_date: details.measurementDate, p_notes: details.notes, p_filename: file.name,
+      p_storage_path: storagePath, p_mime_type: file.type, p_size_bytes: file.size,
+    }));
+  },
+  extractionQc: (sampleId) => unwrap(supabase.rpc("get_extraction_qc_for_sample", { p_sample_id: sampleId })),
   activate: (sampleId) => unwrap(supabase.rpc("activate_sample", { p_sample_id: sampleId })),
   markNotCreated: (sampleId) => unwrap(supabase.rpc("mark_sample_not_created", { p_sample_id: sampleId })),
   markLabelsPrinted: (sampleIds) => unwrap(supabase.rpc("mark_labels_printed", { p_sample_ids: sampleIds })),
