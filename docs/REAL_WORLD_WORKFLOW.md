@@ -13,6 +13,8 @@ PBMC-000001 (parent: none)
 
 All three samples have the same Sample Source. The user selects it only while registering PBMC-000001; downstream creation inherits it automatically.
 
+During Sample Intake, optionally record where the arriving root will be placed in **Sample location**. Use a concise laboratory location and do not enter PHI. Derived tubes do not automatically inherit that physical location.
+
 ## STEMCELL COA registration
 
 Configure the STEMCELL Sample Source with the **STEMCELL COA registration** profile. In **Sample Intake**, select STEMCELL as the provider/origin, upload the original COA, and take or upload the required photo of the tube/package. The browser extracts embedded PDF text first and uses local OCR only if critical fields are missing.

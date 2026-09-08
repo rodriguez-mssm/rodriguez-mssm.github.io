@@ -18,6 +18,8 @@ PDF text extraction and OCR run in the authenticated browser. No COA or image is
 
 Do not enter PHI: no names, MRNs, dates of birth, diagnoses, or clinical free text. Sample identifiers still constitute protected research data in this application and in exports/backups. Avoid embedding data beyond `sample_id` in barcodes.
 
+Sample location is protected inventory metadata. Keep it to laboratory storage descriptors, never patient or donor-identifying information. It is written only through approved intake RPCs and is not exposed anonymously.
+
 Use an institutionally approved Supabase organization, region, account controls, retention policy, and contractual/compliance posture before production use. This repository does not itself establish HIPAA or institutional compliance.
 
 ## Authentication administration

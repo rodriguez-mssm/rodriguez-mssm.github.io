@@ -54,6 +54,8 @@ A Sample Source identifies the external provider or origin of material, such as 
 
 Approved users manage origins from the **Sample Sources** home card. A source has a unique nickname, full name, and optional HTTP(S) URL. A Sample Source must be created before using **Sample Intake** for a newly arrived root sample. Processing automatically inherits the root's `sample_source_id`; users never select it again for aliquots, extraction products, or additional vials.
 
+Sample Intake also accepts an optional **Sample location** of up to 200 characters for the arriving physical root, such as a freezer/rack/box description. It is displayed on sample details and recorded in audit history. Location does not inherit to derived tubes because each physical tube can be stored elsewhere. This field is only an intake location; V1 still has no freezer movement or location-history workflow.
+
 Rows created before the Sample Sources migration remain nullable so existing synthetic tests are not given a fabricated origin. Assign those synthetic roots deliberately if they will continue to be used; newly registered roots cannot be created without a source.
 
 Each source also has an explicit registration profile. Existing sources default to Generic. Edit the STEMCELL source and select **STEMCELL COA registration** to enable private COA upload, required sample-photo upload, local PDF parsing/OCR fallback, reviewed metadata, and confirmed intake. See [source-specific registration](../docs/SOURCE_REGISTRATION.md).

@@ -37,6 +37,8 @@ The repository root remains the existing README-backed GitHub Pages site. The in
 - Serum/plasma: original/current/reserved/planned volume in µL.
 - DNA/RNA: original/current/planned volume in µL, concentration in ng/µL, and generated total mass in ng.
 
+`samples.sample_location` is an optional bounded intake location for a physical root. It is deliberately not inherited through lineage: derived tubes need their own physical placement. It does not model storage hierarchy or movement history.
+
 This strongly typed V1 is easier to validate and query than an entity-attribute-value measurements table. A later `sample_measurements` table can hold repeated or instrument-specific measurements without changing identity/lineage.
 
 `processing_events` is one source plus one or more output plans. It preserves event-level planned allocation, actual consumption, status, actor, and timestamps.
