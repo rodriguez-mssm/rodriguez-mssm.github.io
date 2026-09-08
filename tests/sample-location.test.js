@@ -36,8 +36,9 @@ test("both generic and STEMCELL intake show location and sample detail displays 
     readFile(new URL("../inventory/js/app.js", import.meta.url), "utf8"),
     readFile(new URL("../inventory/js/stemcell-registration-ui.js", import.meta.url), "utf8"),
   ]);
-  assert.match(app, /Sample location \(optional\)[\s\S]+name="sampleLocation"/);
-  assert.match(stemcell, /Sample location \(optional\)[\s\S]+sampleLocation/);
-  assert.match(stemcell, /sample_location: form\.sampleLocation\.value\.trim\(\) \|\| null/);
+  assert.match(app, /Sample location \(optional\)[\s\S]+id="registration-location"/);
+  assert.match(app, /mountStemcellRegistration\([^)]*locationInput/);
+  assert.match(app, /renderGenericRegistration\(container, source, locationInput\)/);
+  assert.match(stemcell, /sample_location: locationInput\.value\.trim\(\) \|\| null/);
   assert.match(app, /<strong>Sample location:<\/strong>/);
 });

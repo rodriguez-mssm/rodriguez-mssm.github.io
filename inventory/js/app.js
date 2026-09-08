@@ -126,21 +126,22 @@ async function printLabels(samples) {
 
 async function renderRegister() {
   const sampleSources = await api.sampleSources();
-  app.innerHTML = `${page("Sample Intake", "Record a physical sample arriving into the lab and select its provider or origin.")}<section class="panel"><label>Sample Source<select id="registration-source" required>${sampleSourceOptions(sampleSources)}</select></label>${sampleSources.length ? "" : '<p class="warning">Create a Sample Source before completing sample intake. <a href="#/sources">Manage Sample Sources</a></p>'}</section><div id="source-registration-workflow"></div>`;
+  app.innerHTML = `${page("Sample Intake", "Record a physical sample arriving into the lab and select its provider or origin.")}<section class="panel"><label>Sample Source<select id="registration-source" required>${sampleSourceOptions(sampleSources)}</select></label><label>Sample location (optional)<input id="registration-location" maxlength="200" placeholder="Freezer / rack / box or other location"></label>${sampleSources.length ? "" : '<p class="warning">Create a Sample Source before completing sample intake. <a href="#/sources">Manage Sample Sources</a></p>'}</section><div id="source-registration-workflow"></div>`;
   const select = document.querySelector("#registration-source");
+  const locationInput = document.querySelector("#registration-location");
   select.onchange = async () => {
     const container = document.querySelector("#source-registration-workflow");
     const source = sampleSources.find((item) => item.id === select.value);
     if (!source) { container.replaceChildren(); return; }
     if (source.registration_profile === "STEMCELL_COA") {
       const { mountStemcellRegistration } = await import("./stemcell-registration-ui.js?v=202609070008");
-      await mountStemcellRegistration({ container, source, api, typeOptions, escapeHtml, toast });
-    } else renderGenericRegistration(container, source);
+      await mountStemcellRegistration({ container, source, api, typeOptions, escapeHtml, toast, locationInput });
+    } else renderGenericRegistration(container, source, locationInput);
   };
 }
 
-function renderGenericRegistration(container, source) {
-  container.innerHTML = `<form id="register-form" class="panel"><h2>${escapeHtml(source.nickname)} sample intake</h2><p class="muted">Use laboratory identifiers only. Do not enter PHI.</p><div class="row"><label>Sample type<select name="sampleType">${typeOptions()}</select></label><label>External/lab reference (optional)<input name="externalId" maxlength="80"></label></div><div id="register-quantity"></div><label>Sample location (optional)<input name="sampleLocation" maxlength="200" placeholder="Freezer / rack / box or other location"></label><label>Notes<textarea name="notes" rows="2"></textarea></label><button>Complete sample intake</button><div id="register-result"></div></form>`;
+function renderGenericRegistration(container, source, locationInput) {
+  container.innerHTML = `<form id="register-form" class="panel"><h2>${escapeHtml(source.nickname)} sample intake</h2><p class="muted">Use laboratory identifiers only. Do not enter PHI.</p><div class="row"><label>Sample type<select name="sampleType">${typeOptions()}</select></label><label>External/lab reference (optional)<input name="externalId" maxlength="80"></label></div><div id="register-quantity"></div><label>Notes<textarea name="notes" rows="2"></textarea></label><button>Complete sample intake</button><div id="register-result"></div></form>`;
   const form = container.querySelector("#register-form");
   const showFields = () => {
     const dim = typeConfig(form.sampleType.value).dimension;
@@ -150,7 +151,7 @@ function renderGenericRegistration(container, source) {
   form.onsubmit = async (event) => {
     event.preventDefault();
     try {
-      const payload = buildSourceSamplePayload({ sampleSourceId: source.id, sampleType: form.sampleType.value, externalId: form.externalId.value, sampleLocation: form.sampleLocation.value, cellCount: number(form.cellCount?.value), volume: number(form.volume?.value), concentration: number(form.concentration?.value), notes: form.notes.value });
+      const payload = buildSourceSamplePayload({ sampleSourceId: source.id, sampleType: form.sampleType.value, externalId: form.externalId.value, sampleLocation: locationInput.value, cellCount: number(form.cellCount?.value), volume: number(form.volume?.value), concentration: number(form.concentration?.value), notes: form.notes.value });
       const result = await api.registerSource(payload);
       form.querySelector("#register-result").innerHTML = `<p class="success">Registered <strong>${escapeHtml(result.sample_id)}</strong>.</p>`; form.reset(); showFields();
     } catch (error) { form.querySelector("#register-result").innerHTML = `<p class="error">${errorMessage(error)}</p>`; }
